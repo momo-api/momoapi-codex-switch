@@ -81,6 +81,13 @@ function Test-MomoApiKey([string]$Key) {
   }
 }
 
+function Expand-ZipArchive([string]$ArchivePath, [string]$DestinationPath) {
+  # WDAG and some locked-down Windows images cannot auto-load
+  # Microsoft.PowerShell.Archive, so avoid Expand-Archive entirely.
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
+}
+
 $node = Get-NodeCommand
 $key = Get-PlaintextKey $ApiKey
 if (-not $key) { throw "A MOMO API key is required." }
@@ -99,7 +106,7 @@ try {
   Write-Step "Downloading MOMO Codex Switch..."
   New-Item -ItemType Directory -Force -Path $workDir | Out-Null
   Invoke-WebRequest -Uri $RepositoryArchive -OutFile $archivePath
-  Expand-Archive -LiteralPath $archivePath -DestinationPath $workDir -Force
+  Expand-ZipArchive -ArchivePath $archivePath -DestinationPath $workDir
   $source = Get-ChildItem -LiteralPath $workDir -Directory | Where-Object { $_.Name -like "momoapi-codex-switch-*" } | Select-Object -First 1
   if (-not $source) { throw "Downloaded MOMO Codex Switch archive has an unexpected layout." }
 
