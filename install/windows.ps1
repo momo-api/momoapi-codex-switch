@@ -173,6 +173,41 @@ function Start-LocalSwitchFallback([string]$OcxCommand, [string]$OpenCodexHome) 
   return $false
 }
 
+function Get-MomoStartupFallbackPath {
+  $startup = [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)
+  if (-not $startup) {
+    throw "Windows could not locate this user's Startup folder."
+  }
+  return (Join-Path $startup "MOMOAPI Proxy.vbs")
+}
+
+function Install-MomoStartupFallback([string]$OcxCommand) {
+  $startupEntry = Get-MomoStartupFallbackPath
+  $command = ('"{0}" start --port 10100' -f $OcxCommand).Replace('"', '""')
+  $vbs = @"
+Set shell = CreateObject("WScript.Shell")
+shell.Run "$command", 0, False
+"@
+  [System.IO.File]::WriteAllText($startupEntry, $vbs, [System.Text.UTF8Encoding]::new($false))
+  return $startupEntry
+}
+
+function Remove-MomoStartupFallback {
+  $startupEntry = Get-MomoStartupFallbackPath
+  Remove-Item -LiteralPath $startupEntry -Force -ErrorAction SilentlyContinue
+}
+
+function Repair-MomoSwitchService([string]$OcxCommand) {
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    & $OcxCommand service repair *>$null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousPreference
+  }
+}
+
 $node = Get-NodeCommand
 $npm = Get-NpmCommand
 $key = Get-PlaintextKey $ApiKey
@@ -239,13 +274,25 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "MOMO route configuration failed." }
 
   Write-Step "Starting the local Switch service..."
-  & $ocx service install
-  if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Task Scheduler did not start the Switch. Starting a local background Switch instead."
+  $serviceReady = $false
+  if ($existingOcx) {
+    # An existing scheduled task is already registered. Repair refreshes its assets
+    # and starts it without trying to create the task again or requesting UAC.
+    $serviceReady = Repair-MomoSwitchService $ocx
+  }
+  if (-not $serviceReady) {
+    & $ocx service install
+    $serviceReady = $LASTEXITCODE -eq 0
+  }
+  if ($serviceReady) {
+    Remove-MomoStartupFallback
+  } else {
+    Write-Warning "Task Scheduler could not register the Switch. Registering a per-user startup fallback instead."
+    $startupEntry = Install-MomoStartupFallback $ocx
     if (-not (Start-LocalSwitchFallback $ocx $opencodexHome)) {
       throw "Local Switch service installation failed. See $(Join-Path $opencodexHome 'service.log'), $(Join-Path $opencodexHome 'installer-fallback.log'), and $(Join-Path $opencodexHome 'installer-fallback.error.log')."
     }
-    Write-Step "Local background Switch is ready."
+    Write-Step "Local Switch is ready and will start when this user signs in: $startupEntry"
   }
 
   Write-Step "Syncing the MOMO model catalog to Codex..."
