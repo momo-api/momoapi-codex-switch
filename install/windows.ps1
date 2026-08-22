@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$RepositoryArchive = "https://github.com/momo-api/momoapi-codex-switch/archive/refs/heads/main.zip"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.0-momo.1/momo-api-momoapi-codex-switch-2.29.0.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -81,13 +81,6 @@ function Test-MomoApiKey([string]$Key) {
   }
 }
 
-function Expand-ZipArchive([string]$ArchivePath, [string]$DestinationPath) {
-  # WDAG and some locked-down Windows images cannot auto-load
-  # Microsoft.PowerShell.Archive, so avoid Expand-Archive entirely.
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
-  [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
-}
-
 $node = Get-NodeCommand
 $key = Get-PlaintextKey $ApiKey
 if (-not $key) { throw "A MOMO API key is required." }
@@ -96,22 +89,13 @@ $previousMomoApiKey = $env:MOMO_API_KEY
 $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
 New-Item -ItemType Directory -Force -Path $codexHome | Out-Null
 
-$workDir = Join-Path $env:TEMP "momoapi-codex-switch-install-$PID"
-$archivePath = Join-Path $workDir "source.zip"
-
 try {
   Write-Step "Checking MOMO API key..."
   Test-MomoApiKey $key
 
-  Write-Step "Downloading MOMO Codex Switch..."
-  New-Item -ItemType Directory -Force -Path $workDir | Out-Null
-  Invoke-WebRequest -Uri $RepositoryArchive -OutFile $archivePath
-  Expand-ZipArchive -ArchivePath $archivePath -DestinationPath $workDir
-  $source = Get-ChildItem -LiteralPath $workDir -Directory | Where-Object { $_.Name -like "momoapi-codex-switch-*" } | Select-Object -First 1
-  if (-not $source) { throw "Downloaded MOMO Codex Switch archive has an unexpected layout." }
-
-  Write-Step "Installing local Switch runtime..."
-  & npm install --global --omit=dev $source.FullName
+  Write-Step "Downloading compact MOMO Switch package (about 3 MB)..."
+  Write-Step "Installing the local Switch runtime..."
+  & npm install --global --omit=dev $PackageReleaseUrl
   if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
   $ocx = Get-OcxCommand
 
@@ -153,5 +137,4 @@ try {
     $env:MOMO_API_KEY = $previousMomoApiKey
   }
   $key = ""
-  if (Test-Path $workDir) { Remove-Item -LiteralPath $workDir -Recurse -Force }
 }
