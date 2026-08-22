@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$ApiKey = "",
-  [switch]$SkipCodexShim
+  [switch]$SkipCodexShim,
+  [string]$CodexHome = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -101,7 +102,8 @@ $previousMomoApiKey = $env:MOMO_API_KEY
 $previousCodexHome = $env:CODEX_HOME
 
 $userProfile = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
-$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $userProfile ".codex" }
+$codexHome = if ($CodexHome.Trim()) { $CodexHome.Trim() } else { Join-Path $userProfile ".codex" }
+Write-Step "Using Codex home: $codexHome"
 New-Item -ItemType Directory -Force -Path $codexHome | Out-Null
 $codexConfig = Join-Path $codexHome "config.toml"
 if (-not (Test-Path $codexConfig)) {

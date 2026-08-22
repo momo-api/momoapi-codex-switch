@@ -124,6 +124,8 @@ describe("install scripts", () => {
 
     expect(script).toContain("$env:USERPROFILE");
     expect(script).toContain("Join-Path $userProfile \".codex\"");
+    expect(script).toContain("[string]$CodexHome = \"\"");
+    expect(script).toContain("if ($CodexHome.Trim()) { $CodexHome.Trim() }");
     expect(script).toContain("[System.IO.File]::WriteAllText($codexConfig");
     expect(script).toContain("$env:CODEX_HOME = $codexHome");
   });
