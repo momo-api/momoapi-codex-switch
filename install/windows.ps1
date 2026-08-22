@@ -2,6 +2,7 @@
 param(
   [string]$ApiKey = "",
   [switch]$SkipCodexShim,
+  [switch]$InstallCodexCli,
   [string]$CodexHome = ""
 )
 
@@ -85,9 +86,15 @@ function Get-CodexCommand([string]$NpmCommand) {
   return $null
 }
 
-function Ensure-CodexCli([string]$NpmCommand) {
+function Ensure-CodexCli([string]$NpmCommand, [bool]$AllowInstall) {
   $codex = Get-CodexCommand $NpmCommand
   if ($codex) { return $codex }
+
+  if (-not $AllowInstall) {
+    Write-Step "Codex CLI was not found. Skipping its download; the existing Codex App can use this setup."
+    Write-Step "To install the CLI separately, re-run with -InstallCodexCli."
+    return $null
+  }
 
   Write-Step "Installing the official Codex CLI..."
   & $NpmCommand install --global --registry $NpmRegistry @openai/codex
@@ -221,7 +228,7 @@ try {
   # Bun as its local runtime, so explicitly allow that one trusted dependency.
   Install-MomoSwitchPackage $npm
   $ocx = Get-OcxCommand $npm
-  $null = Ensure-CodexCli $npm
+  $null = Ensure-CodexCli $npm $InstallCodexCli.IsPresent
 
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key
