@@ -2,12 +2,20 @@
 
 MOMO API's Codex integration, built on the MIT-licensed OpenCodeX compatibility runtime. It retains the upstream Responses, tool replay, SSE, catalog, and desktop integration layers while adding MOMO-native provider presets.
 
+> **Pre-release:** this repository contains the MOMO compatibility implementation and its tests.
+> A supported end-user installer has not been released yet. Do not use the upstream OpenCodeX
+> installation commands below as MOMO setup instructions.
+
+## MOMO setup
+
+After the MOMO Switch is installed, one MOMO API key configures all three native protocol lanes:
+
 ```bash
-ocx provider add momo-responses --api-key "$MOMO_API_KEY"
-ocx provider add momo-claude --api-key "$MOMO_API_KEY"
-ocx provider add momo-gemini --api-key "$MOMO_API_KEY"
-ocx sync
+ocx momo setup --api-key "$MOMO_API_KEY" --set-default --sync
 ```
+
+This command configures the local switch only. It does not require Docker, Podman, WSL, or a VPS.
+The released installer will require only Node.js 18+ and an existing Codex CLI/App installation.
 
 The first release exposes model ids as `momo-responses/<model>`, `momo-claude/<model>`, and `momo-gemini/<model>` so protocol routing is explicit. The upstream copyright notice and [MIT license](LICENSE) are retained.
 
