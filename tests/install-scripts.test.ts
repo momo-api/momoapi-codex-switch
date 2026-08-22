@@ -58,10 +58,10 @@ describe("install scripts", () => {
     expect(pkg.scripts?.["dev:gui"]).toBe("cd gui && bun run dev");
     expect(pkg.scripts?.["prepare:package"]).toBe("bun scripts/prepare-package.ts");
     expect(pkg.scripts?.prepack).toBe("bun run prepare:package");
-    expect(pkg.files).toContain("assets/banner.png");
-    expect(pkg.files).toContain("assets/architecture.png");
-    expect(pkg.files).toContain("assets/claude-code-models.gif");
-    expect(pkg.files).toContain("assets/codex-app-picker.png");
+    expect(pkg.files).not.toContain("assets/banner.png");
+    expect(pkg.files).not.toContain("assets/architecture.png");
+    expect(pkg.files).not.toContain("assets/claude-code-models.gif");
+    expect(pkg.files).not.toContain("assets/codex-app-picker.png");
   });
 
   test("Node can import the package main without executing the CLI", () => {
