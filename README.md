@@ -4,12 +4,24 @@ MOMO API 的 Codex 本地连接工具。它在用户电脑上启动本地兼容�
 
 它不需要 Docker、Podman、WSL 或 VPS。
 
-## Windows 一键安装
+## 一键安装
 
-在 PowerShell 中执行：
+### Windows PowerShell
 
 ```powershell
 irm "https://momoapi.us/install/momoapi-codex-switch.ps1" | iex
+```
+
+### macOS
+
+```bash
+curl -fsSL https://momoapi.us/install/momoapi-codex-switch.sh | bash
+```
+
+### Linux / WSL
+
+```bash
+curl -fsSL https://momoapi.us/install/momoapi-codex-switch.sh | bash
 ```
 
 安装器会：
@@ -18,7 +30,7 @@ irm "https://momoapi.us/install/momoapi-codex-switch.ps1" | iex
 2. 校验 MOMO API Key。
 3. 从 MOMO 下载约 4 MB 的发布包，校验完整性后安装本地运行环境。
 4. 不会自动下载官方 Codex CLI，也不会调用 `codex login` 或写入 OpenAI/ChatGPT 凭据；已有 Codex App 可直接使用。
-5. 配置 MOMO 模型路由、启动本地服务并同步 Codex 模型目录与启动衔接配置。
+5. 配置 MOMO 模型路由、注册随登录自动启动的本地服务，并同步 Codex 模型目录与启动衔接配置。
 
 安装完成后，重启 Codex，在 `/model` 中直接选择模型名，例如 `GPT-5.6 Sol`、`DeepSeek V4 Pro`、`Claude Opus 4.6 Thinking` 或 `Gemini 3.7 Flash`。
 
@@ -29,7 +41,8 @@ irm "https://momoapi.us/install/momoapi-codex-switch.ps1" | iex
 - Codex 通过本机 `127.0.0.1` 自定义 provider 连接 Switch，不要求 OpenAI API key、ChatGPT 登录或 OpenAI 账号池。列出的模型均使用安装时输入的 MOMO Key。
 - 本地服务默认监听 `127.0.0.1`，MOMO 专用的免鉴权入口只接受本机请求。
 - 安装脚本与发布包均由 `momoapi.us` 承载；Windows 依赖安装默认使用 npm 国内镜像，也可通过 `MOMO_NPM_REGISTRY` 临时覆盖。
-- 仅在明确需要命令行版且本机未安装时，才使用 `-InstallCodexCli` 参数安装官方 Codex CLI。
+- 不自动下载官方 Codex CLI。仅在明确需要命令行版且本机未安装时，Windows 使用 `-InstallCodexCli`，macOS/Linux/WSL 在命令后追加 `--install-codex-cli`。
+- 本地代理通过 Windows Task Scheduler、macOS launchd 或 Linux systemd 用户服务随用户登录自动启动。Linux/WSL 没有 systemd 时，安装会明确提示启用它，不会伪装成可跨重启的临时进程。
 
 ## 支持
 
