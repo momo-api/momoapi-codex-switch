@@ -15,19 +15,19 @@ export const MOMO_DESKTOP_COMPATIBILITY_COMBOS: Readonly<Record<string, OcxCombo
   "momo-desktop-deepseek": {
     alias: "gpt-5.6-sol",
     nativeAlias: true,
-    displayName: "MOMO DeepSeek V4 Pro",
+    displayName: "MOMOAPI DeepSeek V4 Pro",
     targets: [{ provider: "momo-responses", model: "deepseek-v4-pro" }],
   },
   "momo-desktop-claude": {
     alias: "gpt-5.6-terra",
     nativeAlias: true,
-    displayName: "MOMO Claude Opus 4.6 Thinking",
+    displayName: "MOMOAPI Claude Opus 4.6 Thinking",
     targets: [{ provider: "momo-claude", model: "claude-opus-4-6-thinking" }],
   },
   "momo-desktop-gemini": {
     alias: "gpt-5.6-luna",
     nativeAlias: true,
-    displayName: "MOMO Gemini 3.7 Flash",
+    displayName: "MOMOAPI Gemini 3.7 Flash",
     targets: [{ provider: "momo-gemini", model: "gemini-3.7-flash" }],
   },
 });
@@ -36,7 +36,26 @@ export const MOMO_DESKTOP_COMPATIBILITY_COMBOS: Readonly<Record<string, OcxCombo
 export function applyMomoDesktopCompatibilityAliases(existing: Record<string, OcxComboConfig> | undefined): Record<string, OcxComboConfig> {
   const combos = { ...(existing ?? {}) };
   for (const [id, combo] of Object.entries(MOMO_DESKTOP_COMPATIBILITY_COMBOS)) {
-    if (!Object.hasOwn(combos, id)) combos[id] = { ...combo, targets: [...combo.targets] };
+    const current = combos[id];
+    if (!current) {
+      combos[id] = { ...combo, targets: [...combo.targets] };
+      continue;
+    }
+    // Upgrade labels created by earlier MOMO installers, while leaving a user's
+    // custom target, alias, or label untouched.
+    const target = current.targets?.[0];
+    const expectedTarget = combo.targets[0];
+    const expectedDisplayName = combo.displayName ?? "";
+    const oldManagedLabel = current.displayName === expectedDisplayName
+      || current.displayName === expectedDisplayName.replace("MOMOAPI", "MOMO");
+    if (current.alias === combo.alias
+      && current.nativeAlias === true
+      && current.targets?.length === 1
+      && target?.provider === expectedTarget?.provider
+      && target?.model === expectedTarget?.model
+      && oldManagedLabel) {
+      combos[id] = { ...current, displayName: expectedDisplayName };
+    }
   }
   return combos;
 }
@@ -118,7 +137,7 @@ export async function runMomo(
   console.log(`MOMO providers configured with key ${maskKey(apiKey)}:`);
   for (const id of MOMO_PROVIDER_IDS) console.log(`  - ${id}`);
   if (setDefault) console.log("Default provider: momo-responses");
-  if (desktopAliases) console.log("Desktop compatibility aliases: DeepSeek V4 Pro, Claude Opus 4.6 Thinking, Gemini 3.7 Flash");
+  if (desktopAliases) console.log("Desktop compatibility aliases: MOMOAPI DeepSeek V4 Pro, MOMOAPI Claude Opus 4.6 Thinking, MOMOAPI Gemini 3.7 Flash");
 
   if (!sync) {
     console.log("Run `ocx sync` to publish the MOMO models to Codex.");

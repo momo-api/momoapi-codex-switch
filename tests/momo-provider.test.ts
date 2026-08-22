@@ -47,11 +47,30 @@ describe("MOMO provider presets", () => {
     expect(combos["momo-desktop-deepseek"]).toMatchObject({
       alias: "gpt-5.6-sol",
       nativeAlias: true,
-      displayName: "MOMO DeepSeek V4 Pro",
+      displayName: "MOMOAPI DeepSeek V4 Pro",
       targets: [{ provider: "momo-responses", model: "deepseek-v4-pro" }],
     });
     expect(combos["momo-desktop-claude"]?.targets).toEqual([{ provider: "momo-claude", model: "claude-opus-4-6-thinking" }]);
     expect(combos["momo-desktop-gemini"]?.targets).toEqual([{ provider: "momo-gemini", model: "gemini-3.7-flash" }]);
+  });
+
+  test("renames aliases created by the previous MOMO installer without replacing user edits", () => {
+    const upgraded = applyMomoDesktopCompatibilityAliases({
+      "momo-desktop-deepseek": {
+        alias: "gpt-5.6-sol",
+        nativeAlias: true,
+        displayName: "MOMO DeepSeek V4 Pro",
+        targets: [{ provider: "momo-responses", model: "deepseek-v4-pro" }],
+      },
+      "momo-desktop-claude": {
+        alias: "gpt-5.6-terra",
+        nativeAlias: true,
+        displayName: "My Claude",
+        targets: [{ provider: "momo-claude", model: "claude-opus-4-6-thinking" }],
+      },
+    });
+    expect(upgraded["momo-desktop-deepseek"]?.displayName).toBe("MOMOAPI DeepSeek V4 Pro");
+    expect(upgraded["momo-desktop-claude"]?.displayName).toBe("My Claude");
   });
 
   test("publishes only the current coding catalog and Ox's supported efforts", () => {
