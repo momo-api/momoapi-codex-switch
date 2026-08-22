@@ -128,6 +128,7 @@ describe("install scripts", () => {
     expect(script).toContain("if ($CodexHome.Trim()) { $CodexHome.Trim() }");
     expect(script).toContain("[System.IO.File]::WriteAllText($codexConfig");
     expect(script).toContain("$env:CODEX_HOME = $codexHome");
+    expect(script).toContain("Stopping the existing local Switch service");
   });
 
   test("Node launcher handles npm self-update before starting Bun", async () => {

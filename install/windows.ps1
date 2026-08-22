@@ -112,10 +112,26 @@ if (-not (Test-Path $codexConfig)) {
 }
 # Use the Windows profile path for this setup and the background service.
 $env:CODEX_HOME = $codexHome
+$existingOcx = $null
+try {
+  $existingOcx = Get-OcxCommand $npm
+} catch {
+  # First installation: no existing launcher to stop.
+}
 
 try {
   Write-Step "Checking MOMO API key..."
   Test-MomoApiKey $key
+
+  if ($existingOcx) {
+    Write-Step "Stopping the existing local Switch service..."
+    & $existingOcx service stop
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "The previous service did not stop cleanly. Continuing with the runtime update."
+    } else {
+      Start-Sleep -Seconds 2
+    }
+  }
 
   Write-Step "Downloading compact MOMO Switch package (about 3 MB)..."
   Write-Step "Installing the local Switch runtime..."
