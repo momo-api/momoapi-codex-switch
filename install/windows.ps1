@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.0-momo.1/momo-api-momoapi-codex-switch-2.29.0.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.0-momo.2/momo-api-momoapi-codex-switch-2.29.0.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -46,12 +46,24 @@ function Get-NodeCommand {
   return $node
 }
 
-function Get-OcxCommand {
-  $prefix = (& npm prefix --global).Trim()
+function Get-NpmCommand {
+  # Prefer the executable shim: npm.ps1 is blocked by some Windows execution policies.
+  $nodeDir = Join-Path $env:ProgramFiles "nodejs"
+  $npmCmd = Join-Path $nodeDir "npm.cmd"
+  if (Test-Path $npmCmd) { return $npmCmd }
+
+  $npm = Get-Command npm.cmd -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($npm) { return $npm.Source }
+
+  throw "npm.cmd was not found with Node.js. Reinstall Node.js LTS, then run this installer again."
+}
+
+function Get-OcxCommand([string]$NpmCommand) {
+  $prefix = (& $NpmCommand prefix --global).Trim()
   $candidates = @(
+    (Join-Path $prefix "momoapi-codex-switch.cmd"),
     (Join-Path $prefix "ocx.cmd"),
-    (Join-Path $prefix "ocx"),
-    (Join-Path $prefix "momoapi-codex-switch.cmd")
+    (Join-Path $prefix "ocx")
   )
   foreach ($candidate in $candidates) {
     if (Test-Path $candidate) { return $candidate }
@@ -82,6 +94,7 @@ function Test-MomoApiKey([string]$Key) {
 }
 
 $node = Get-NodeCommand
+$npm = Get-NpmCommand
 $key = Get-PlaintextKey $ApiKey
 if (-not $key) { throw "A MOMO API key is required." }
 $previousMomoApiKey = $env:MOMO_API_KEY
@@ -95,9 +108,9 @@ try {
 
   Write-Step "Downloading compact MOMO Switch package (about 3 MB)..."
   Write-Step "Installing the local Switch runtime..."
-  & npm install --global --omit=dev $PackageReleaseUrl
+  & $npm install --global --omit=dev $PackageReleaseUrl
   if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
-  $ocx = Get-OcxCommand
+  $ocx = Get-OcxCommand $npm
 
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key

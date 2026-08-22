@@ -45,6 +45,9 @@ describe("install scripts", () => {
       devDependencies?: Record<string, string>;
       scripts?: Record<string, string>;
       files?: string[];
+      repository?: { url?: string };
+      homepage?: string;
+      bugs?: { url?: string };
     };
 
     expect(pkg.main).toBe("./bin/package-main.mjs");
@@ -62,6 +65,9 @@ describe("install scripts", () => {
     expect(pkg.files).not.toContain("assets/architecture.png");
     expect(pkg.files).not.toContain("assets/claude-code-models.gif");
     expect(pkg.files).not.toContain("assets/codex-app-picker.png");
+    expect(pkg.repository?.url).toBe("git+https://github.com/momo-api/momoapi-codex-switch.git");
+    expect(pkg.homepage).toBe("https://github.com/momo-api/momoapi-codex-switch");
+    expect(pkg.bugs?.url).toBe("https://github.com/momo-api/momoapi-codex-switch/issues");
   });
 
   test("Node can import the package main without executing the CLI", () => {

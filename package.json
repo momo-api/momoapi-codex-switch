@@ -12,7 +12,6 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "opencodex": "./bin/ocx.mjs",
     "ocx": "./bin/ocx.mjs",
     "momoapi-codex-switch": "./bin/ocx.mjs"
   },
@@ -93,11 +92,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lidge-jun/opencodex.git"
+    "url": "git+https://github.com/momo-api/momoapi-codex-switch.git"
   },
-  "homepage": "https://lidge-jun.github.io/opencodex/",
+  "homepage": "https://github.com/momo-api/momoapi-codex-switch",
   "bugs": {
-    "url": "https://github.com/lidge-jun/opencodex/issues"
+    "url": "https://github.com/momo-api/momoapi-codex-switch/issues"
   },
   "license": "MIT"
 }
