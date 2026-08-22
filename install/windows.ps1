@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.5-momo.1/momo-api-momoapi-codex-switch-2.29.5.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.6-momo.1/momo-api-momoapi-codex-switch-2.29.6.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -165,15 +165,21 @@ try {
 
   if ($existingOcx) {
     Write-Step "Stopping the existing local Switch service..."
-    # A stale pre-MOMO install can print a harmless restore warning here. The
-    # installer immediately writes the new MOMO routing, so keep that residue
-    # out of the beginner-facing installation output.
-    & $existingOcx service stop *>$null
-    if ($LASTEXITCODE -ne 0) {
-      Write-Warning "The previous service did not stop cleanly. Continuing with the runtime update."
-    } else {
-      Start-Sleep -Seconds 4
+    # Older releases can stop their service successfully, then return a nonzero
+    # status only because restoring an already-user-managed Codex config failed.
+    # Treat that as an upgrade warning, not an installation blocker.
+    $stopErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      & $existingOcx service stop *>$null
+      $stopExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $stopErrorActionPreference
     }
+    if ($stopExitCode -ne 0) {
+      Write-Warning "The previous Switch reported a cleanup warning. Continuing with the runtime update."
+    }
+    Start-Sleep -Seconds 4
   }
 
   Write-Step "Downloading compact MOMO Switch package (about 3 MB)..."
