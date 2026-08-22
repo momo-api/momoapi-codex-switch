@@ -7,7 +7,10 @@ import { getProviderRegistryEntry } from "../src/providers/registry";
 import { parseRequest } from "../src/responses/parser";
 import { resolveWireProtocolOverride } from "../src/server/adapter-resolve";
 import { buildToolBridgeMaps } from "../src/server/responses";
-import { applyMomoDesktopCompatibilityAliases, momoProviderConfigs, removeMomoDesktopCompatibilityAliases } from "../src/cli/momo";
+import { applyMomoCodexModelAliases, applyMomoDesktopCompatibilityAliases, hideMomoTransportModelIds, momoProviderConfigs, removeMomoDesktopCompatibilityAliases } from "../src/cli/momo";
+import { routeModel } from "../src/router";
+import { filterCatalogVisibleModels } from "../src/codex/catalog";
+import { catalogModelSlug } from "../src/codex/catalog/parsing";
 import type { OcxParsedRequest } from "../src/types";
 import { createTestTranslatorBudget } from "./helpers/translator-budget";
 
@@ -134,6 +137,69 @@ describe("MOMO provider presets", () => {
     expect(restored["momo-desktop-deepseek"]).toBeUndefined();
     expect(restored["momo-desktop-gemini"]).toBeUndefined();
     expect(restored["momo-desktop-claude"]?.displayName).toBe("My Claude");
+  });
+
+  test("publishes short MOMO model names that route without an OpenAI account pool", () => {
+    const config = {
+      port: 10101,
+      defaultProvider: "momo-responses",
+      providers: momoProviderConfigs("momo-test-key"),
+      combos: applyMomoCodexModelAliases({}),
+      disabledModels: hideMomoTransportModelIds([]),
+    } as never;
+
+    expect(routeModel(config, "gpt-5.6-sol")).toMatchObject({
+      providerName: "momo-responses",
+      modelId: "gpt-5.6-sol",
+      routeKind: "combo",
+    });
+    expect(routeModel(config, "deepseek-v4-pro")).toMatchObject({
+      providerName: "momo-responses",
+      modelId: "deepseek-v4-pro",
+      routeKind: "combo",
+    });
+    expect(routeModel(config, "claude-opus-4-6-thinking")).toMatchObject({
+      providerName: "momo-claude",
+      modelId: "claude-opus-4-6-thinking",
+      routeKind: "combo",
+    });
+    expect(routeModel(config, "gemini-3.7-flash")).toMatchObject({
+      providerName: "momo-gemini",
+      modelId: "gemini-3.7-flash",
+      routeKind: "combo",
+    });
+    expect(config.disabledModels).toContain("momo-responses/gpt-5.6-sol");
+  });
+
+  test("catalog exposes the short aliases and hides MOMO transport-qualified duplicates", async () => {
+    const config = {
+      port: 10101,
+      defaultProvider: "momo-responses",
+      providers: momoProviderConfigs("momo-test-key"),
+      combos: applyMomoCodexModelAliases({}),
+      disabledModels: hideMomoTransportModelIds([]),
+    } as never;
+    // Provider discovery is separately exercised by the catalog suite. This unit
+    // only asserts the local visibility policy and must not make a real network call.
+    const models = filterCatalogVisibleModels([
+      { provider: "momo-responses", id: "gpt-5.6-sol" },
+      { provider: "momo-responses", id: "deepseek-v4-pro" },
+      { provider: "momo-claude", id: "claude-opus-4-6-thinking" },
+      { provider: "momo-gemini", id: "gemini-3.7-flash" },
+      { provider: "combo", id: "momo-model-gpt-5-6-sol", alias: "gpt-5.6-sol", nativeAlias: true },
+      { provider: "combo", id: "momo-model-deepseek-v4-pro", alias: "deepseek-v4-pro" },
+      { provider: "combo", id: "momo-model-claude-opus-4-6-thinking", alias: "claude-opus-4-6-thinking" },
+      { provider: "combo", id: "momo-model-gemini-3-7-flash", alias: "gemini-3.7-flash" },
+    ] as never, config);
+    const slugs = models.map(catalogModelSlug);
+
+    expect(slugs).toContain("gpt-5.6-sol");
+    expect(slugs).toContain("deepseek-v4-pro");
+    expect(slugs).toContain("claude-opus-4-6-thinking");
+    expect(slugs).toContain("gemini-3.7-flash");
+    expect(slugs).not.toContain("momo-responses/gpt-5.6-sol");
+    expect(slugs).not.toContain("momo-claude/claude-opus-4-6-thinking");
+    expect(slugs).not.toContain("momo-gemini/gemini-3.7-flash");
   });
 
   test("publishes only the current coding catalog and Ox's supported efforts", () => {

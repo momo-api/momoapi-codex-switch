@@ -1,10 +1,35 @@
 import { loadConfig, saveConfig } from "../config";
 import { syncModelsToCodex } from "../codex/sync";
+import { routedSlug } from "../providers/slug-codec";
 import { providerConfigSeed } from "../providers/derive";
 import { getProviderRegistryEntry } from "../providers/registry";
 import type { OcxComboConfig, OcxProviderConfig } from "../types";
 
 const MOMO_PROVIDER_IDS = ["momo-responses", "momo-claude", "momo-gemini"] as const;
+
+type MomoModelAlias = {
+  id: string;
+  provider: (typeof MOMO_PROVIDER_IDS)[number];
+  displayName: string;
+  nativeAlias?: boolean;
+};
+
+// These are intentionally bare Codex model ids. MOMO Switch is a MOMO-only
+// installation, so the picker should show the model customers chose, not the
+// internal provider/model transport namespace.
+const MOMO_MODEL_ALIASES: readonly MomoModelAlias[] = [
+  { id: "gpt-5.4", provider: "momo-responses", displayName: "GPT-5.4", nativeAlias: true },
+  { id: "gpt-5.4-mini", provider: "momo-responses", displayName: "GPT-5.4 Mini", nativeAlias: true },
+  { id: "gpt-5.5", provider: "momo-responses", displayName: "GPT-5.5", nativeAlias: true },
+  { id: "gpt-5.6-luna", provider: "momo-responses", displayName: "GPT-5.6 Luna", nativeAlias: true },
+  { id: "gpt-5.6-terra", provider: "momo-responses", displayName: "GPT-5.6 Terra", nativeAlias: true },
+  { id: "gpt-5.6-sol", provider: "momo-responses", displayName: "GPT-5.6 Sol", nativeAlias: true },
+  { id: "deepseek-v4-flash", provider: "momo-responses", displayName: "DeepSeek V4 Flash" },
+  { id: "deepseek-v4-pro", provider: "momo-responses", displayName: "DeepSeek V4 Pro" },
+  { id: "ox-alpha-free", provider: "momo-responses", displayName: "Ox Alpha Free" },
+  { id: "claude-opus-4-6-thinking", provider: "momo-claude", displayName: "Claude Opus 4.6 Thinking" },
+  { id: "gemini-3.7-flash", provider: "momo-gemini", displayName: "Gemini 3.7 Flash" },
+];
 
 /**
  * Codex Desktop filters its picker to a small remote allowlist of native ids.
@@ -80,6 +105,49 @@ export function removeMomoDesktopCompatibilityAliases(existing: Record<string, O
   return combos;
 }
 
+function momoModelAliasId(model: MomoModelAlias): string {
+  return `momo-model-${model.id.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+/**
+ * Publish MOMO models under their real, short ids. A bare GPT id is normally
+ * reserved by OpenCodeX for its OpenAI account pool; a nativeAlias combo takes
+ * precedence and routes it through the customer's MOMO key instead.
+ */
+export function applyMomoCodexModelAliases(existing: Record<string, OcxComboConfig> | undefined): Record<string, OcxComboConfig> {
+  const combos = removeMomoDesktopCompatibilityAliases(existing);
+  for (const model of MOMO_MODEL_ALIASES) {
+    const id = momoModelAliasId(model);
+    const current = combos[id];
+    const expected: OcxComboConfig = {
+      alias: model.id,
+      ...(model.nativeAlias ? { nativeAlias: true } : {}),
+      displayName: model.displayName,
+      targets: [{ provider: model.provider, model: model.id }],
+    };
+    // Preserve a customer's deliberate edit, but repair our own older row.
+    if (!current) {
+      combos[id] = expected;
+      continue;
+    }
+    const target = current.targets?.[0];
+    if (current.alias === model.id
+      && current.targets?.length === 1
+      && target?.provider === model.provider
+      && target?.model === model.id) {
+      combos[id] = { ...current, ...expected };
+    }
+  }
+  return combos;
+}
+
+/** Hide transport-qualified duplicates; the matching bare combo aliases stay visible. */
+export function hideMomoTransportModelIds(existing: string[] | undefined): string[] {
+  const hidden = new Set(existing ?? []);
+  for (const model of MOMO_MODEL_ALIASES) hidden.add(routedSlug(model.provider, model.id));
+  return [...hidden];
+}
+
 function consumeFlag(args: string[], flag: string): boolean {
   const index = args.indexOf(flag);
   if (index === -1) return false;
@@ -151,6 +219,8 @@ export async function runMomo(
 
   const config = loadConfig();
   Object.assign(config.providers, momoProviderConfigs(apiKey, config.providers));
+  config.combos = applyMomoCodexModelAliases(config.combos);
+  config.disabledModels = hideMomoTransportModelIds(config.disabledModels);
   // Codex itself sends no MOMO key. Keep that credential in the local Switch
   // and expose a separate loopback-only Responses endpoint for the custom
   // provider injected into Codex config.toml.
@@ -162,8 +232,11 @@ export async function runMomo(
     };
   }
   if (setDefault) config.defaultProvider = "momo-responses";
-  if (desktopAliases) config.combos = applyMomoDesktopCompatibilityAliases(config.combos);
-  if (restoreDesktopAliases) config.combos = removeMomoDesktopCompatibilityAliases(config.combos);
+  // Kept only as no-op compatibility flags for installers from 2.29.4-2.29.10.
+  // MOMO Switch now always publishes short, real model names instead of three
+  // misleading desktop-slot aliases.
+  void desktopAliases;
+  void restoreDesktopAliases;
   saveConfig(config);
 
   console.log(`MOMO providers configured with key ${maskKey(apiKey)}:`);
@@ -172,8 +245,7 @@ export async function runMomo(
   if (config.unauthenticatedLoopbackListener?.enabled) {
     console.log(`Codex local-only endpoint: http://127.0.0.1:${config.unauthenticatedLoopbackListener.port}/v1`);
   }
-  if (desktopAliases) console.log("Desktop compatibility aliases: MOMOAPI DeepSeek V4 Pro, MOMOAPI Claude Opus 4.6 Thinking, MOMOAPI Gemini 3.7 Flash");
-  if (restoreDesktopAliases) console.log("Restored native Codex model slots from MOMO compatibility aliases.");
+  console.log("Codex model names: GPT-5.4, GPT-5.5, GPT-5.6, DeepSeek, Claude, Gemini, and Ox.");
 
   if (!sync) {
     console.log("Run `ocx sync` to publish the MOMO models to Codex.");

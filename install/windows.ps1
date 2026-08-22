@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.10-momo.1/momo-api-momoapi-codex-switch-2.29.10.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.11-momo.1/momo-api-momoapi-codex-switch-2.29.11.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -178,9 +178,9 @@ try {
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key
   Write-Step "Configuring MOMO model routes..."
-  # Keep MOMO's local provider key and named routed catalog entries. Native-alias
-  # mode consumes GPT-5.6 picker slots, so it remains an explicit opt-in only.
-  & $ocx momo setup --set-default --restore-desktop-aliases
+  # MOMO setup owns the local routes and publishes short model names. It never
+  # needs an OpenAI account, API key, or account-pool credential.
+  & $ocx momo setup --set-default
   if ($LASTEXITCODE -ne 0) { throw "MOMO route configuration failed." }
 
   Write-Step "Starting the local Switch service..."
