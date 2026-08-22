@@ -8,7 +8,9 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.12-momo.1/momo-api-momoapi-codex-switch-2.29.12.tgz"
+$PackageReleaseUrl = "https://momoapi.us/install/packages/momoapi-codex-switch-2.29.13.tgz"
+$PackageSha256 = "17cb476588a4092c31b4f709151d1aff95ffbb67ea4a2e75f508406c89b3cb6f"
+$NpmRegistry = if ($env:MOMO_NPM_REGISTRY) { $env:MOMO_NPM_REGISTRY.TrimEnd("/") } else { "https://registry.npmmirror.com" }
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -88,7 +90,7 @@ function Ensure-CodexCli([string]$NpmCommand) {
   if ($codex) { return $codex }
 
   Write-Step "Installing the official Codex CLI..."
-  & $NpmCommand install --global @openai/codex
+  & $NpmCommand install --global --registry $NpmRegistry @openai/codex
   if ($LASTEXITCODE -ne 0) { throw "Codex CLI installation failed. Re-run the installer after checking your network." }
 
   $codex = Get-CodexCommand $NpmCommand
@@ -125,6 +127,22 @@ function Test-LocalSwitchReady {
     return $main.StatusCode -eq 200 -and $codex.StatusCode -eq 200
   } catch {
     return $false
+  }
+}
+
+function Install-MomoSwitchPackage([string]$NpmCommand) {
+  $packagePath = Join-Path ([System.IO.Path]::GetTempPath()) "momoapi-codex-switch-$([Guid]::NewGuid().ToString('N')).tgz"
+  try {
+    Invoke-WebRequest -UseBasicParsing -Uri $PackageReleaseUrl -OutFile $packagePath -TimeoutSec 120
+    $actualSha256 = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualSha256 -ne $PackageSha256.ToLowerInvariant()) {
+      throw "MOMO Switch package integrity check failed. Expected $PackageSha256 but received $actualSha256."
+    }
+
+    & $NpmCommand install --global --omit=dev --allow-scripts=bun --registry $NpmRegistry $packagePath
+    if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
+  } finally {
+    Remove-Item -LiteralPath $packagePath -Force -ErrorAction SilentlyContinue
   }
 }
 
@@ -197,12 +215,11 @@ try {
     Start-Sleep -Seconds 4
   }
 
-  Write-Step "Downloading compact MOMO Switch package (about 3 MB)..."
+  Write-Step "Downloading MOMO-hosted Switch package (about 4 MB)..."
   Write-Step "Installing the local Switch runtime..."
   # npm 11 can disable dependency install scripts by default. MOMO Switch ships
   # Bun as its local runtime, so explicitly allow that one trusted dependency.
-  & $npm install --global --omit=dev --allow-scripts=bun $PackageReleaseUrl
-  if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
+  Install-MomoSwitchPackage $npm
   $ocx = Get-OcxCommand $npm
   $null = Ensure-CodexCli $npm
 
