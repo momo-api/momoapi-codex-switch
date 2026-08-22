@@ -118,6 +118,36 @@ function Test-MomoApiKey([string]$Key) {
   }
 }
 
+function Test-LocalSwitchReady {
+  try {
+    $main = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:10100/healthz" -TimeoutSec 2
+    $codex = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:10101/v1/models" -TimeoutSec 2
+    return $main.StatusCode -eq 200 -and $codex.StatusCode -eq 200
+  } catch {
+    return $false
+  }
+}
+
+function Start-LocalSwitchFallback([string]$OcxCommand, [string]$OpenCodexHome) {
+  # Windows Sandbox and locked-down work accounts can register a scheduled task
+  # without ever launching its child. Keep the install usable in that case: Codex's
+  # on-demand shim will start this same local runtime on later launches.
+  New-Item -ItemType Directory -Force -Path $OpenCodexHome | Out-Null
+  $fallbackLog = Join-Path $OpenCodexHome "installer-fallback.log"
+  $fallbackErrorLog = Join-Path $OpenCodexHome "installer-fallback.error.log"
+  Start-Process -FilePath $OcxCommand -ArgumentList @("start", "--port", "10100") `
+    -WorkingDirectory $OpenCodexHome -WindowStyle Hidden `
+    -RedirectStandardOutput $fallbackLog -RedirectStandardError $fallbackErrorLog
+
+  $deadline = (Get-Date).AddSeconds(20)
+  do {
+    if (Test-LocalSwitchReady) { return $true }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $deadline)
+
+  return $false
+}
+
 $node = Get-NodeCommand
 $npm = Get-NpmCommand
 $key = Get-PlaintextKey $ApiKey
@@ -127,6 +157,7 @@ $previousCodexHome = $env:CODEX_HOME
 
 $userProfile = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
 $codexHome = if ($CodexHome.Trim()) { $CodexHome.Trim() } else { Join-Path $userProfile ".codex" }
+$opencodexHome = if ($env:OPENCODEX_HOME) { $env:OPENCODEX_HOME } else { Join-Path $userProfile ".opencodex" }
 Write-Step "Using Codex home: $codexHome"
 New-Item -ItemType Directory -Force -Path $codexHome | Out-Null
 $codexConfig = Join-Path $codexHome "config.toml"
@@ -185,7 +216,13 @@ try {
 
   Write-Step "Starting the local Switch service..."
   & $ocx service install
-  if ($LASTEXITCODE -ne 0) { throw "Local Switch service installation failed." }
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Task Scheduler did not start the Switch. Starting a local background Switch instead."
+    if (-not (Start-LocalSwitchFallback $ocx $opencodexHome)) {
+      throw "Local Switch service installation failed. See $(Join-Path $opencodexHome 'service.log'), $(Join-Path $opencodexHome 'installer-fallback.log'), and $(Join-Path $opencodexHome 'installer-fallback.error.log')."
+    }
+    Write-Step "Local background Switch is ready."
+  }
 
   Write-Step "Syncing the MOMO model catalog to Codex..."
   & $ocx sync
