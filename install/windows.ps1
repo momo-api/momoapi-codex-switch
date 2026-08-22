@@ -208,6 +208,46 @@ function Repair-MomoSwitchService([string]$OcxCommand) {
   }
 }
 
+function Convert-LegacyMomoCodexConfig([string]$CodexConfig, [string]$CatalogPath) {
+  if (-not (Test-Path $CodexConfig)) { return $false }
+
+  $content = [System.IO.File]::ReadAllText($CodexConfig)
+  $rootEnd = $content.IndexOf("[")
+  if ($rootEnd -lt 0) { $rootEnd = $content.Length }
+  $root = $content.Substring(0, $rootEnd)
+  $tables = $content.Substring($rootEnd)
+
+  # Migrate only the exact legacy MOMO direct provider. Any other third-party
+  # provider remains untouched and continues to own its user's configuration.
+  if ($root -notmatch '(?m)^\s*model_provider\s*=\s*"Codex"\s*$') { return $false }
+  $legacyMatch = [regex]::Match($tables, '(?ms)^\[model_providers\.Codex\]\s*\r?\n.*?(?=^\[|\z)')
+  if (-not $legacyMatch.Success -or $legacyMatch.Value -notmatch '(?mi)^\s*base_url\s*=\s*"https://momoapi\.us/v1/?"\s*$') { return $false }
+
+  $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+  Copy-Item -LiteralPath $CodexConfig -Destination "$CodexConfig.momoapi-legacy-$timestamp.bak" -Force
+
+  $root = [regex]::Replace($root, '(?m)^\s*model_provider\s*=\s*"Codex"\s*$', 'model_provider = "opencodex"', 1)
+  $catalogTomlPath = $CatalogPath.Replace('\', '/')
+  if ($root -match '(?m)^\s*model_catalog_json\s*=') {
+    $root = [regex]::Replace($root, '(?m)^\s*model_catalog_json\s*=.*$', "model_catalog_json = `"$catalogTomlPath`"", 1)
+  } else {
+    $root = $root.TrimEnd() + "`r`nmodel_catalog_json = `"$catalogTomlPath`"`r`n"
+  }
+
+  $tables = $tables.Remove($legacyMatch.Index, $legacyMatch.Length).Trim()
+  $providerBlock = @"
+
+[model_providers.opencodex]
+name = "MOMOAPI Proxy"
+base_url = "http://127.0.0.1:10101/v1"
+wire_api = "responses"
+requires_openai_auth = false
+"@
+  [System.IO.File]::WriteAllText($CodexConfig, ($root.TrimEnd() + "`r`n" + $tables.TrimEnd() + "`r`n" + $providerBlock.Trim() + "`r`n"), [System.Text.UTF8Encoding]::new($false))
+  Write-Step "Migrated the previous MOMO direct configuration to MOMOAPI Proxy. A backup was created beside config.toml."
+  return $true
+}
+
 $node = Get-NodeCommand
 $npm = Get-NpmCommand
 $key = Get-PlaintextKey $ApiKey
@@ -272,6 +312,8 @@ try {
   # needs an OpenAI account, API key, or account-pool credential.
   & $ocx momo setup --set-default
   if ($LASTEXITCODE -ne 0) { throw "MOMO route configuration failed." }
+  $catalogPath = Join-Path $codexHome "opencodex-catalog.json"
+  $null = Convert-LegacyMomoCodexConfig $codexConfig $catalogPath
 
   Write-Step "Starting the local Switch service..."
   $serviceReady = $false
