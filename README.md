@@ -2,9 +2,17 @@
 
 MOMO API's Codex integration, built on the MIT-licensed OpenCodeX compatibility runtime. It retains the upstream Responses, tool replay, SSE, catalog, and desktop integration layers while adding MOMO-native provider presets.
 
-> **Pre-release:** this repository contains the MOMO compatibility implementation and its tests.
-> A supported end-user installer has not been released yet. Do not use the upstream OpenCodeX
-> installation commands below as MOMO setup instructions.
+> **Pre-release:** use the Windows installer below for testing. It does not use Docker, Podman,
+> WSL, or a VPS. It installs the local Switch, configures MOMO, starts the local service, syncs
+> the Codex model catalog, and installs the Codex startup shim when Codex CLI is present.
+
+```powershell
+irm https://raw.githubusercontent.com/momo-api/momoapi-codex-switch/main/install/windows.ps1 | iex
+```
+
+The installer requires an existing Codex CLI/App and Node.js 18+. When Node.js is missing it tries
+to install the LTS release with winget. It downloads Bun as the Switch's private runtime; users do
+not install or operate Bun separately.
 
 ## MOMO setup
 
