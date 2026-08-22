@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.1-momo.1/momo-api-momoapi-codex-switch-2.29.1.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.2-momo.1/momo-api-momoapi-codex-switch-2.29.2.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -70,6 +70,30 @@ function Get-OcxCommand([string]$NpmCommand) {
     if (Test-Path $candidate) { return $candidate }
   }
   throw "momoapi-codex-switch installed, but its ocx launcher was not found."
+}
+
+function Get-CodexCommand([string]$NpmCommand) {
+  $codex = Get-Command codex -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($codex) { return $codex.Source }
+
+  $prefix = (& $NpmCommand prefix --global).Trim()
+  foreach ($candidate in @((Join-Path $prefix "codex.cmd"), (Join-Path $prefix "codex"))) {
+    if (Test-Path $candidate) { return $candidate }
+  }
+  return $null
+}
+
+function Ensure-CodexCli([string]$NpmCommand) {
+  $codex = Get-CodexCommand $NpmCommand
+  if ($codex) { return $codex }
+
+  Write-Step "Installing the official Codex CLI..."
+  & $NpmCommand install --global @openai/codex
+  if ($LASTEXITCODE -ne 0) { throw "Codex CLI installation failed. Re-run the installer after checking your network." }
+
+  $codex = Get-CodexCommand $NpmCommand
+  if (-not $codex) { throw "Codex CLI installed but its launcher was not found. Open a new PowerShell window and run the installer again." }
+  return $codex
 }
 
 function Get-PlaintextKey([string]$SuppliedKey) {
@@ -143,6 +167,7 @@ try {
   & $npm install --global --omit=dev --allow-scripts=bun $PackageReleaseUrl
   if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
   $ocx = Get-OcxCommand $npm
+  $codex = Ensure-CodexCli $npm
 
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key
@@ -159,14 +184,9 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Codex model catalog sync failed." }
 
   if (-not $SkipCodexShim) {
-    $codex = Get-Command codex -ErrorAction SilentlyContinue
-    if ($codex) {
-      Write-Step "Installing the Codex on-demand startup shim..."
-      & $ocx codex-shim install
-      if ($LASTEXITCODE -ne 0) { throw "Codex startup shim installation failed." }
-    } else {
-      Write-Warning "Codex CLI was not found. The Switch is configured, but install Codex CLI before using it."
-    }
+    Write-Step "Installing the Codex on-demand startup shim..."
+    & $ocx codex-shim install
+    if ($LASTEXITCODE -ne 0) { throw "Codex startup shim installation failed." }
   }
 
   Write-Step "Running diagnostics..."
