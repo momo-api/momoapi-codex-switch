@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.11-momo.1/momo-api-momoapi-codex-switch-2.29.11.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.12-momo.1/momo-api-momoapi-codex-switch-2.29.12.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {

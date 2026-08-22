@@ -222,7 +222,7 @@ export function buildProviderTableBlock(
     "",
     OCX_SECTION_MARKER,
     "[model_providers.opencodex]",
-    'name = "OpenCodex Proxy"',
+    'name = "MOMOAPI Proxy"',
     `base_url = "http://${host}:${port}/v1"`,
     'wire_api = "responses"',
     `requires_openai_auth = ${requiresOpenAiAuth ? "true" : "false"}`,
