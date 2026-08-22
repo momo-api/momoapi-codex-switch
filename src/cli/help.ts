@@ -49,6 +49,7 @@ Usage:
   ocx ready [--json] [--wait [--timeout <s>]]  Check post-sync readiness (exit 0 only when ready)
   ocx provider <sub>          Providers, connectivity, quota, and selected models
   ocx momo setup [options]    Configure MOMO Responses, Claude, and Gemini with one MOMO API key
+                              Add --desktop-aliases to expose supported MOMO models in Codex Desktop
   ocx account <sub>           Accounts, login/reauth, key pools, and quota controls
   ocx models <sub>            Live/custom models, visibility, context, and shadow calls
   ocx combo <sub>             Combo failover/round-robin routing

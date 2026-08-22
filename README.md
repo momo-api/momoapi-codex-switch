@@ -19,13 +19,15 @@ irm "https://raw.githubusercontent.com/momo-api/momoapi-codex-switch/main/instal
 3. 下载约 3 MB 的 MOMO 发布包并安装本地运行环境。
 4. 缺失时安装官方 Codex CLI，并在没有既有登录态时配置本地 API-key 登录。
 5. 配置 MOMO 模型路由、启动本地服务并同步 Codex 模型目录与启动衔接配置。
+6. 为 Desktop 创建三条清晰标注的兼容选择项：`MOMO DeepSeek V4 Pro`、`MOMO Claude Opus 4.6 Thinking`、`MOMO Gemini 3.7 Flash`。
 
-安装完成后，重启 Codex，在 `/model` 中选择 MOMO 提供的模型。
+安装完成后，重启 Codex，在 `/model` 中选择上述 MOMO 模型。
 
 ## 使用说明
 
 - 安装时只需输入 MOMO API Key；密钥不会写入命令行参数或 PowerShell 历史记录。已有 ChatGPT/Codex 登录不会被覆盖。
 - 模型列表由 MOMO API 同步，实际可用性和额度以账户权限及上游状态为准。
+- 官方 Desktop 会过滤任意第三方模型 ID；这三项通过本地兼容路由占用 Desktop 已允许的 Codex 槽位，但显示名称和实际路由均明确标注为 MOMO 第三方模型。
 - 本地服务默认只监听 `127.0.0.1`。
 
 ## 支持

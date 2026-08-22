@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createGoogleAdapter } from "../src/adapters/google";
 import { providerConfigSeed } from "../src/providers/derive";
 import { getProviderRegistryEntry } from "../src/providers/registry";
-import { momoProviderConfigs } from "../src/cli/momo";
+import { applyMomoDesktopCompatibilityAliases, momoProviderConfigs } from "../src/cli/momo";
 import type { OcxParsedRequest } from "../src/types";
 
 const parsed = {
@@ -39,6 +39,19 @@ describe("MOMO provider presets", () => {
     expect(providers["momo-gemini"]?.adapter).toBe("google");
     expect(Object.values(providers).every(provider => provider.apiKey === "momo-test-key")).toBe(true);
     expect(providers["momo-claude"]?.headers?.["User-Agent"]).toBe("momoapi-codex-switch");
+  });
+
+  test("creates honest native aliases for the three Codex Desktop picker slots", () => {
+    const combos = applyMomoDesktopCompatibilityAliases({ custom: { targets: [{ provider: "x", model: "y" }] } });
+    expect(combos.custom).toEqual({ targets: [{ provider: "x", model: "y" }] });
+    expect(combos["momo-desktop-deepseek"]).toMatchObject({
+      alias: "gpt-5.6-sol",
+      nativeAlias: true,
+      displayName: "MOMO DeepSeek V4 Pro",
+      targets: [{ provider: "momo-responses", model: "deepseek-v4-pro" }],
+    });
+    expect(combos["momo-desktop-claude"]?.targets).toEqual([{ provider: "momo-claude", model: "claude-opus-4-6-thinking" }]);
+    expect(combos["momo-desktop-gemini"]?.targets).toEqual([{ provider: "momo-gemini", model: "gemini-3.7-flash" }]);
   });
 
   test("publishes only the current coding catalog and Ox's supported efforts", () => {

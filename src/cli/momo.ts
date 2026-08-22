@@ -2,9 +2,44 @@ import { loadConfig, saveConfig } from "../config";
 import { syncModelsToCodex } from "../codex/sync";
 import { providerConfigSeed } from "../providers/derive";
 import { getProviderRegistryEntry } from "../providers/registry";
-import type { OcxProviderConfig } from "../types";
+import type { OcxComboConfig, OcxProviderConfig } from "../types";
 
 const MOMO_PROVIDER_IDS = ["momo-responses", "momo-claude", "momo-gemini"] as const;
+
+/**
+ * Codex Desktop filters its picker to a small remote allowlist of native ids.
+ * These explicit aliases occupy three allowlisted rows while retaining an honest
+ * display label and routing each selection to its MOMO provider/model target.
+ */
+export const MOMO_DESKTOP_COMPATIBILITY_COMBOS: Readonly<Record<string, OcxComboConfig>> = Object.freeze({
+  "momo-desktop-deepseek": {
+    alias: "gpt-5.6-sol",
+    nativeAlias: true,
+    displayName: "MOMO DeepSeek V4 Pro",
+    targets: [{ provider: "momo-responses", model: "deepseek-v4-pro" }],
+  },
+  "momo-desktop-claude": {
+    alias: "gpt-5.6-terra",
+    nativeAlias: true,
+    displayName: "MOMO Claude Opus 4.6 Thinking",
+    targets: [{ provider: "momo-claude", model: "claude-opus-4-6-thinking" }],
+  },
+  "momo-desktop-gemini": {
+    alias: "gpt-5.6-luna",
+    nativeAlias: true,
+    displayName: "MOMO Gemini 3.7 Flash",
+    targets: [{ provider: "momo-gemini", model: "gemini-3.7-flash" }],
+  },
+});
+
+/** Add the Desktop-only compatibility aliases without replacing user-managed combos. */
+export function applyMomoDesktopCompatibilityAliases(existing: Record<string, OcxComboConfig> | undefined): Record<string, OcxComboConfig> {
+  const combos = { ...(existing ?? {}) };
+  for (const [id, combo] of Object.entries(MOMO_DESKTOP_COMPATIBILITY_COMBOS)) {
+    if (!Object.hasOwn(combos, id)) combos[id] = { ...combo, targets: [...combo.targets] };
+  }
+  return combos;
+}
 
 function consumeFlag(args: string[], flag: string): boolean {
   const index = args.indexOf(flag);
@@ -55,15 +90,16 @@ export async function runMomo(
   const args = [...rawArgs];
   const command = args.shift();
   if (command !== "setup") {
-    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--sync]");
+    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases] [--sync]");
     return 1;
   }
 
   const setDefault = consumeFlag(args, "--set-default");
+  const desktopAliases = consumeFlag(args, "--desktop-aliases");
   const sync = consumeFlag(args, "--sync");
   const suppliedKey = consumeFlagValue(args, "--api-key");
   if (args.length > 0) {
-    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--sync]");
+    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases] [--sync]");
     return 1;
   }
 
@@ -76,11 +112,13 @@ export async function runMomo(
   const config = loadConfig();
   Object.assign(config.providers, momoProviderConfigs(apiKey, config.providers));
   if (setDefault) config.defaultProvider = "momo-responses";
+  if (desktopAliases) config.combos = applyMomoDesktopCompatibilityAliases(config.combos);
   saveConfig(config);
 
   console.log(`MOMO providers configured with key ${maskKey(apiKey)}:`);
   for (const id of MOMO_PROVIDER_IDS) console.log(`  - ${id}`);
   if (setDefault) console.log("Default provider: momo-responses");
+  if (desktopAliases) console.log("Desktop compatibility aliases: DeepSeek V4 Pro, Claude Opus 4.6 Thinking, Gemini 3.7 Flash");
 
   if (!sync) {
     console.log("Run `ocx sync` to publish the MOMO models to Codex.");
