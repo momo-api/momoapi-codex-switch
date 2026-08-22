@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.8-momo.1/momo-api-momoapi-codex-switch-2.29.8.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.9-momo.1/momo-api-momoapi-codex-switch-2.29.9.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -195,9 +195,9 @@ try {
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key
   Write-Step "Configuring MOMO model routes..."
-  # Keep MOMO's local provider key and its desktop compatibility mappings in the
-  # OpenCodeX config. The proxy remains responsible for every protocol conversion.
-  & $ocx momo setup --set-default --desktop-aliases
+  # Keep MOMO's local provider key and named routed catalog entries. Native-alias
+  # mode consumes GPT-5.6 picker slots, so it remains an explicit opt-in only.
+  & $ocx momo setup --set-default --restore-desktop-aliases
   if ($LASTEXITCODE -ne 0) { throw "MOMO route configuration failed." }
 
   Write-Step "Starting the local Switch service..."
@@ -219,7 +219,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Installation completed, but diagnostics reported a problem." }
 
   Write-Host ""
-  Write-Host "MOMO Codex Switch is ready. Restart Codex, then select a MOMOAPI model in /model."
+  Write-Host "MOMO Codex Switch is ready. Restart Codex, then select a routed MOMO model in /model."
 } finally {
   if ($null -eq $previousMomoApiKey) {
     Remove-Item Env:MOMO_API_KEY -ErrorAction SilentlyContinue
