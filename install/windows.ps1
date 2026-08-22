@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.6-momo.1/momo-api-momoapi-codex-switch-2.29.6.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.7-momo.1/momo-api-momoapi-codex-switch-2.29.7.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -195,9 +195,10 @@ try {
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key
   Write-Step "Configuring MOMO model routes..."
-  # Desktop only shows a remote allowlist of native ids. This opt-in creates
-  # three clearly-labelled MOMO aliases on those allowed picker rows.
-  & $ocx momo setup --set-default --desktop-aliases
+  # Do not consume GPT-5.6's real picker slots. Third-party rows are exposed
+  # by preserving an official ChatGPT/Codex sign-in, like CC Switch does.
+  # This also removes unmodified aliases created by earlier MOMO releases.
+  & $ocx momo setup --set-default --restore-desktop-aliases
   if ($LASTEXITCODE -ne 0) { throw "MOMO route configuration failed." }
 
   Write-Step "Starting the local Switch service..."
@@ -219,7 +220,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Installation completed, but diagnostics reported a problem." }
 
   Write-Host ""
-  Write-Host "MOMO Codex Switch is ready. Restart Codex, then choose MOMOAPI DeepSeek V4 Pro, MOMOAPI Claude Opus 4.6 Thinking, or MOMOAPI Gemini 3.7 Flash in /model."
+  Write-Host "MOMO Codex Switch is ready. Restart Codex. Keep an official ChatGPT/Codex sign-in to show MOMOAPI models in the Desktop picker."
 } finally {
   if ($null -eq $previousMomoApiKey) {
     Remove-Item Env:MOMO_API_KEY -ErrorAction SilentlyContinue

@@ -60,6 +60,26 @@ export function applyMomoDesktopCompatibilityAliases(existing: Record<string, Oc
   return combos;
 }
 
+/** Remove only unmodified aliases created by MOMO Switch releases 2.29.4-2.29.6. */
+export function removeMomoDesktopCompatibilityAliases(existing: Record<string, OcxComboConfig> | undefined): Record<string, OcxComboConfig> {
+  const combos = { ...(existing ?? {}) };
+  for (const [id, combo] of Object.entries(MOMO_DESKTOP_COMPATIBILITY_COMBOS)) {
+    const current = combos[id];
+    const target = current?.targets?.[0];
+    const expectedTarget = combo.targets[0];
+    const expectedDisplayName = combo.displayName ?? "";
+    const isManagedAlias = current?.alias === combo.alias
+      && current.nativeAlias === true
+      && current.targets?.length === 1
+      && target?.provider === expectedTarget?.provider
+      && target?.model === expectedTarget?.model
+      && (current.displayName === expectedDisplayName
+        || current.displayName === expectedDisplayName.replace("MOMOAPI", "MOMO"));
+    if (isManagedAlias) delete combos[id];
+  }
+  return combos;
+}
+
 function consumeFlag(args: string[], flag: string): boolean {
   const index = args.indexOf(flag);
   if (index === -1) return false;
@@ -109,16 +129,17 @@ export async function runMomo(
   const args = [...rawArgs];
   const command = args.shift();
   if (command !== "setup") {
-    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases] [--sync]");
+    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases|--restore-desktop-aliases] [--sync]");
     return 1;
   }
 
   const setDefault = consumeFlag(args, "--set-default");
   const desktopAliases = consumeFlag(args, "--desktop-aliases");
+  const restoreDesktopAliases = consumeFlag(args, "--restore-desktop-aliases");
   const sync = consumeFlag(args, "--sync");
   const suppliedKey = consumeFlagValue(args, "--api-key");
-  if (args.length > 0) {
-    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases] [--sync]");
+  if (desktopAliases && restoreDesktopAliases || args.length > 0) {
+    console.error("Usage: ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases|--restore-desktop-aliases] [--sync]");
     return 1;
   }
 
@@ -132,12 +153,14 @@ export async function runMomo(
   Object.assign(config.providers, momoProviderConfigs(apiKey, config.providers));
   if (setDefault) config.defaultProvider = "momo-responses";
   if (desktopAliases) config.combos = applyMomoDesktopCompatibilityAliases(config.combos);
+  if (restoreDesktopAliases) config.combos = removeMomoDesktopCompatibilityAliases(config.combos);
   saveConfig(config);
 
   console.log(`MOMO providers configured with key ${maskKey(apiKey)}:`);
   for (const id of MOMO_PROVIDER_IDS) console.log(`  - ${id}`);
   if (setDefault) console.log("Default provider: momo-responses");
   if (desktopAliases) console.log("Desktop compatibility aliases: MOMOAPI DeepSeek V4 Pro, MOMOAPI Claude Opus 4.6 Thinking, MOMOAPI Gemini 3.7 Flash");
+  if (restoreDesktopAliases) console.log("Restored native Codex model slots from MOMO compatibility aliases.");
 
   if (!sync) {
     console.log("Run `ocx sync` to publish the MOMO models to Codex.");

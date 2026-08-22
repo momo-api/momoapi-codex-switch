@@ -139,7 +139,7 @@ export const CLI_COMMANDS: CliCommandEntry[] = [
   },
   {
     name: "momo",
-    usage: "ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases] [--sync]",
+    usage: "ocx momo setup [--api-key <MOMO_KEY>] [--set-default] [--desktop-aliases|--restore-desktop-aliases] [--sync]",
     summary: "Configure MOMO Responses, Claude, and Gemini providers with one MOMO API key.",
   },
   {

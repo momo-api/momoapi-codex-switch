@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createGoogleAdapter } from "../src/adapters/google";
 import { providerConfigSeed } from "../src/providers/derive";
 import { getProviderRegistryEntry } from "../src/providers/registry";
-import { applyMomoDesktopCompatibilityAliases, momoProviderConfigs } from "../src/cli/momo";
+import { applyMomoDesktopCompatibilityAliases, momoProviderConfigs, removeMomoDesktopCompatibilityAliases } from "../src/cli/momo";
 import type { OcxParsedRequest } from "../src/types";
 
 const parsed = {
@@ -71,6 +71,21 @@ describe("MOMO provider presets", () => {
     });
     expect(upgraded["momo-desktop-deepseek"]?.displayName).toBe("MOMOAPI DeepSeek V4 Pro");
     expect(upgraded["momo-desktop-claude"]?.displayName).toBe("My Claude");
+  });
+
+  test("removes only unmodified compatibility aliases so native GPT slots return", () => {
+    const aliases = applyMomoDesktopCompatibilityAliases({
+      "momo-desktop-claude": {
+        alias: "gpt-5.6-terra",
+        nativeAlias: true,
+        displayName: "My Claude",
+        targets: [{ provider: "momo-claude", model: "claude-opus-4-6-thinking" }],
+      },
+    });
+    const restored = removeMomoDesktopCompatibilityAliases(aliases);
+    expect(restored["momo-desktop-deepseek"]).toBeUndefined();
+    expect(restored["momo-desktop-gemini"]).toBeUndefined();
+    expect(restored["momo-desktop-claude"]?.displayName).toBe("My Claude");
   });
 
   test("publishes only the current coding catalog and Ox's supported efforts", () => {
