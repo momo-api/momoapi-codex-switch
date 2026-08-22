@@ -579,7 +579,7 @@ describe("public port selection avoids the loopback port", () => {
 });
 
 describe("Codex injection targets the loopback listener", () => {
-  test("the written config points at the loopback port with no auth header", () => {
+  test("the written config uses a no-login custom provider on the loopback port", () => {
     // A subprocess, because CODEX_CONFIG_PATH is resolved at module load: setting CODEX_HOME
     // in-process would write to whatever path this test file already imported.
     //
@@ -614,6 +614,9 @@ describe("Codex injection targets the loopback listener", () => {
       const written = readFileSync(join(codexHome, "config.toml"), "utf-8");
       expect(written).toContain("http://127.0.0.1:10200/v1");
       expect(written).not.toContain("http://127.0.0.1:10100/v1");
+      expect(written).toContain('model_provider = "opencodex"');
+      expect(written).toContain("requires_openai_auth = false");
+      expect(written).not.toContain("openai_base_url");
       expect(written).not.toContain("env_http_headers");
       expect(written).not.toContain("env_key");
     } finally {

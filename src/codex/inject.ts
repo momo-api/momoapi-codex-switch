@@ -215,6 +215,7 @@ export function buildProviderTableBlock(
   supportsWebsockets = false,
   includeApiAuthHeader = false,
   hostname?: string,
+  requiresOpenAiAuth = true,
 ): string {
   const host = providerBaseHost(hostname);
   const lines = [
@@ -224,7 +225,7 @@ export function buildProviderTableBlock(
     'name = "OpenCodex Proxy"',
     `base_url = "http://${host}:${port}/v1"`,
     'wire_api = "responses"',
-    "requires_openai_auth = true",
+    `requires_openai_auth = ${requiresOpenAiAuth ? "true" : "false"}`,
   ];
   if (includeApiAuthHeader) {
     // codex-cli 0.146+ contract (#2073): env_key sends Authorization: Bearer $VAR and
@@ -600,6 +601,30 @@ function ensureFastModeFeature(content: string, fastMode?: boolean): string {
   return lines.join("\n");
 }
 
+/**
+ * A key-only local install has no ChatGPT session for the featured-plugin request.
+ * Leave an explicit user choice intact, but otherwise prevent its guaranteed 401
+ * warning from being emitted on every Codex launch.
+ */
+export function disableRemotePluginDiscoveryForLocalProvider(content: string): string {
+  const lines = content.split("\n");
+  const featuresHeader = /^\s*\[(["']?)\s*features\s*\1\]\s*(?:#.*)?$/;
+  const remotePluginKey = /^\s*(?:"remote_plugin"|'remote_plugin'|remote_plugin)\s*=/;
+  const featuresStart = lines.findIndex(line => featuresHeader.test(line));
+  if (featuresStart === -1) {
+    return content.trimEnd() + "\n\n[features]\nremote_plugin = false\n";
+  }
+
+  const nextTable = lines.findIndex((line, index) => index > featuresStart && /^\s*\[/.test(line));
+  const featuresEnd = nextTable === -1 ? lines.length : nextTable;
+  if (lines.slice(featuresStart + 1, featuresEnd).some(line => remotePluginKey.test(line))) return content;
+
+  let insertAt = featuresEnd;
+  while (insertAt > featuresStart + 1 && lines[insertAt - 1].trim() === "") insertAt--;
+  lines.splice(insertAt, 0, "remote_plugin = false");
+  return lines.join("\n");
+}
+
 function isOpencodexCatalogPath(path: string): boolean {
   return path.replace(/\\/g, "/").split("/").pop() === "opencodex-catalog.json";
 }
@@ -618,8 +643,27 @@ function stripOpencodexCatalogPath(content: string): string {
     .join("\n");
 }
 
-export function buildProfileFile(port: number, catalogPath?: string | null, supportsWebsockets = false, includeApiAuthHeader = false, hostname?: string, fastMode?: boolean): string {
+export function buildProfileFile(
+  port: number,
+  catalogPath?: string | null,
+  supportsWebsockets = false,
+  includeApiAuthHeader = false,
+  hostname?: string,
+  fastMode?: boolean,
+  unauthenticatedLoopbackProvider = false,
+): string {
   const host = providerBaseHost(hostname);
+  if (unauthenticatedLoopbackProvider) {
+    const lines = [
+      "# OpenCodex MOMO local-only profile.",
+      "# It talks only to the unauthenticated 127.0.0.1 listener; provider credentials stay in OpenCodex.",
+      'model_provider = "opencodex"',
+    ];
+    if (catalogPath) lines.push(`model_catalog_json = ${tomlString(catalogPath)}`);
+    if (fastMode !== undefined) lines.push("", "[features]", `fast_mode = ${fastMode ? "true" : "false"}`);
+    lines.push(buildProviderTableBlock(port, supportsWebsockets, false, hostname, false).trimEnd(), "");
+    return lines.join("\n");
+  }
   // Design B (loopback): the reference/fallback file documents the root override form.
   // Non-loopback keeps the legacy provider-table shape (built-in provider cannot carry
   // the x-opencodex-api-key env header).
@@ -781,6 +825,7 @@ export async function injectCodexConfig(
     : stripOpencodexCatalogPath(content);
 
   const legacyMode = shouldInjectApiAuthHeader(config);
+  const unauthenticatedLoopbackProvider = loopback?.enabled === true;
   let keptUserBaseUrl = false;
   if (legacyMode) {
     // Legacy (non-loopback) injection: the built-in openai provider cannot carry the
@@ -797,6 +842,20 @@ export async function injectCodexConfig(
         true,
         config?.hostname,
       );
+  } else if (unauthenticatedLoopbackProvider) {
+    // MOMO-only installs use a custom provider instead of the built-in OpenAI
+    // provider, whose sign-in flow is unrelated to the local MOMO credential.
+    content = setRootModelProvider(content);
+    content =
+      content.trimEnd() +
+      "\n" +
+      buildProviderTableBlock(
+        port,
+        websocketsEnabled(config ?? {}),
+        false,
+        config?.hostname,
+        false,
+      );
   } else {
     // Design B (loopback): a single root override; codex keeps its native `openai` provider id
     // so thread history is never remapped. Any legacy form was already stripped above.
@@ -804,6 +863,10 @@ export async function injectCodexConfig(
     const result = setRootOpenaiBaseUrl(content, port, config?.hostname);
     content = result.content;
     keptUserBaseUrl = result.keptUserBaseUrl;
+  }
+
+  if (unauthenticatedLoopbackProvider) {
+    content = disableRemotePluginDiscoveryForLocalProvider(content);
   }
 
   const desiredSubagentDefaults = configuredManagedSubagentDefaults(config);
@@ -837,7 +900,15 @@ export async function injectCodexConfig(
     managedDefaultsMessage = `  ⚠️ ${nativeSubagentDefaultsWarning}\n`;
   }
 
-  const profileContent = buildProfileFile(port, catalogPath, websocketsEnabled(config ?? {}), legacyMode, config?.hostname, config?.fastMode);
+  const profileContent = buildProfileFile(
+    port,
+    catalogPath,
+    websocketsEnabled(config ?? {}),
+    legacyMode,
+    config?.hostname,
+    config?.fastMode,
+    unauthenticatedLoopbackProvider,
+  );
   content = applyEol(content, eol);
 
   /*

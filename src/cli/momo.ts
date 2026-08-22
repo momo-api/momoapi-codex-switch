@@ -151,6 +151,16 @@ export async function runMomo(
 
   const config = loadConfig();
   Object.assign(config.providers, momoProviderConfigs(apiKey, config.providers));
+  // Codex itself sends no MOMO key. Keep that credential in the local Switch
+  // and expose a separate loopback-only Responses endpoint for the custom
+  // provider injected into Codex config.toml.
+  const proxyPort = config.port ?? 10100;
+  if (!config.unauthenticatedLoopbackListener?.enabled) {
+    config.unauthenticatedLoopbackListener = {
+      enabled: true,
+      port: proxyPort === 10101 ? 10102 : 10101,
+    };
+  }
   if (setDefault) config.defaultProvider = "momo-responses";
   if (desktopAliases) config.combos = applyMomoDesktopCompatibilityAliases(config.combos);
   if (restoreDesktopAliases) config.combos = removeMomoDesktopCompatibilityAliases(config.combos);
@@ -159,6 +169,9 @@ export async function runMomo(
   console.log(`MOMO providers configured with key ${maskKey(apiKey)}:`);
   for (const id of MOMO_PROVIDER_IDS) console.log(`  - ${id}`);
   if (setDefault) console.log("Default provider: momo-responses");
+  if (config.unauthenticatedLoopbackListener?.enabled) {
+    console.log(`Codex local-only endpoint: http://127.0.0.1:${config.unauthenticatedLoopbackListener.port}/v1`);
+  }
   if (desktopAliases) console.log("Desktop compatibility aliases: MOMOAPI DeepSeek V4 Pro, MOMOAPI Claude Opus 4.6 Thinking, MOMOAPI Gemini 3.7 Flash");
   if (restoreDesktopAliases) console.log("Restored native Codex model slots from MOMO compatibility aliases.");
 

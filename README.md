@@ -17,17 +17,17 @@ irm "https://raw.githubusercontent.com/momo-api/momoapi-codex-switch/main/instal
 1. 检查 Node.js 18+；缺失时尝试通过 winget 安装 Node.js LTS。
 2. 校验 MOMO API Key。
 3. 下载约 3 MB 的 MOMO 发布包并安装本地运行环境。
-4. 缺失时安装官方 Codex CLI，并在没有既有登录态时配置本地 API-key 登录。
+4. 缺失时安装官方 Codex CLI；不会调用 `codex login` 或写入 OpenAI/ChatGPT 凭据。
 5. 配置 MOMO 模型路由、启动本地服务并同步 Codex 模型目录与启动衔接配置。
 
 安装完成后，重启 Codex，在 `/model` 中选择 MOMOAPI 模型。
 
 ## 使用说明
 
-- 安装时只需输入 MOMO API Key；密钥不会写入命令行参数或 PowerShell 历史记录。已有 ChatGPT/Codex 登录不会被覆盖。
+- 安装时只需输入 MOMO API Key；密钥不会写入命令行参数或 PowerShell 历史记录。MOMO key 只保存在本地 Switch，不会被写入 Codex 的 `auth.json`。
 - 模型列表由 MOMO API 同步，实际可用性和额度以账户权限及上游状态为准。
-- 官方 Desktop 的第三方模型可见性依赖有效的官方 ChatGPT/Codex 登录态。安装器保留已有登录；请先在 Codex/ChatGPT Desktop 登录一次官方账号，再使用 MOMOAPI 本地路由。这样不会挤占 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` 的真实模型槽位。
-- 本地服务默认只监听 `127.0.0.1`。
+- Codex 通过本机 `127.0.0.1` 自定义 provider 连接 Switch，不要求 OpenAI API key 或 Codex CLI 登录。远程插件发现默认关闭，避免未登录时产生 ChatGPT 401 警告。
+- 本地服务默认监听 `127.0.0.1`，MOMO 专用的免鉴权入口只接受本机请求。
 
 ## 支持
 

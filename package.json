@@ -1,6 +1,6 @@
 {
   "name": "@momo-api/momoapi-codex-switch",
-  "version": "2.29.9",
+  "version": "2.29.10",
   "description": "MOMO API Codex Switch, built on the OpenCodeX compatibility runtime",
   "type": "module",
   "main": "./bin/package-main.mjs",

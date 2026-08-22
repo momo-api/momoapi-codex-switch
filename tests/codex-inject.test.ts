@@ -5,6 +5,7 @@ import {
   buildProfileFile,
   buildProviderTableBlock,
   chooseCatalogPathForInjection,
+  disableRemotePluginDiscoveryForLocalProvider,
   dominantEol,
   setRootOpenaiBaseUrl,
   stripInjectedOpenaiBaseUrl,
@@ -45,6 +46,13 @@ describe("Codex config injection", () => {
     // The legacy header table must not come back: codex 0.146+ documents env_key as
     // the bearer form, and #1686's server-side substitution is keyed to it.
     expect(block).not.toContain("env_http_headers");
+  });
+
+  test("can create a local-only provider that does not require an OpenAI sign-in", () => {
+    const block = buildProviderTableBlock(10101, false, false, undefined, false);
+
+    expect(block).toContain("requires_openai_auth = false");
+    expect(block).not.toContain("env_key");
   });
 
   test("injected base_url matches the actual bind: literal 127.0.0.1 for loopback/wildcard (Windows resolves localhost to ::1 first)", () => {
@@ -155,6 +163,24 @@ describe("Codex config injection", () => {
     expect(profile).not.toContain('model_provider = "opencodex"');
     expect(profile).not.toContain("[model_providers.opencodex]");
     expect(profile).not.toContain("model_catalog_json");
+  });
+
+  test("MOMO loopback profile uses a custom provider with no Codex credential", () => {
+    const profile = buildProfileFile(10101, "/tmp/opencodex-catalog.json", false, false, undefined, undefined, true);
+
+    expect(profile).toContain('model_provider = "opencodex"');
+    expect(profile).toContain('base_url = "http://127.0.0.1:10101/v1"');
+    expect(profile).toContain("requires_openai_auth = false");
+    expect(profile).not.toContain("openai_base_url");
+  });
+
+  test("MOMO local-only injection disables remote plugin discovery only when the user has not set it", () => {
+    const initial = 'model = "gpt-5.5"\n';
+    const features = disableRemotePluginDiscoveryForLocalProvider(initial);
+    expect(features).toContain("remote_plugin = false");
+
+    const userEnabled = '[features]\nremote_plugin = true\n';
+    expect(disableRemotePluginDiscoveryForLocalProvider(userEnabled)).toBe(userEnabled);
   });
 
   test("fallback profile does not force fast_mode when fastMode is unset", () => {

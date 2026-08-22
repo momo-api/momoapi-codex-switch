@@ -129,6 +129,8 @@ describe("install scripts", () => {
     expect(script).toContain("[System.IO.File]::WriteAllText($codexConfig");
     expect(script).toContain("$env:CODEX_HOME = $codexHome");
     expect(script).toContain("Stopping the existing local Switch service");
+    expect(script).not.toContain("login --with-api-key");
+    expect(script).not.toContain("Ensure-CodexApiKeyAuth");
   });
 
   test("Node launcher handles npm self-update before starting Bun", async () => {

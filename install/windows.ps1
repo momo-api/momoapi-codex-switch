@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.9-momo.1/momo-api-momoapi-codex-switch-2.29.9.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.10-momo.1/momo-api-momoapi-codex-switch-2.29.10.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -96,22 +96,6 @@ function Ensure-CodexCli([string]$NpmCommand) {
   return $codex
 }
 
-function Ensure-CodexApiKeyAuth([string]$CodexCommand, [string]$CodexHome, [string]$Key) {
-  $authPath = Join-Path $CodexHome "auth.json"
-  if (Test-Path $authPath) {
-    Write-Step "Keeping the existing Codex sign-in."
-    return
-  }
-
-  Write-Step "Configuring Codex API-key sign-in..."
-  # `codex login --with-api-key` reads stdin, so the MOMO key never appears in
-  # a process argument or the PowerShell command history.
-  $Key | & $CodexCommand login --with-api-key
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $authPath)) {
-    throw "Codex API-key sign-in could not be configured."
-  }
-}
-
 function Get-PlaintextKey([string]$SuppliedKey) {
   if ($SuppliedKey.Trim()) { return $SuppliedKey.Trim() }
   $secure = Read-Host "Enter your MOMO API key" -AsSecureString
@@ -189,8 +173,7 @@ try {
   & $npm install --global --omit=dev --allow-scripts=bun $PackageReleaseUrl
   if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
   $ocx = Get-OcxCommand $npm
-  $codex = Ensure-CodexCli $npm
-  Ensure-CodexApiKeyAuth $codex $codexHome $key
+  $null = Ensure-CodexCli $npm
 
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key
