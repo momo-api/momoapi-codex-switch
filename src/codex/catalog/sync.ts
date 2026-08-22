@@ -1267,10 +1267,18 @@ function loadCatalogForRetainedSync(path: string): RawCatalog | null {
   // template. The null-template builder is deliberate; a stale backup must not replace active
   // custom root metadata merely because the current file contains only routed rows.
   if (active && (!isDefaultCatalogPath(path) || findNativeTemplate(active))) return active;
-  return readCatalog(catalogBackupPathFor(path))
+  const recovered = readCatalog(catalogBackupPathFor(path))
     ?? (isDefaultCatalogPath(path) ? readCatalog(legacyCatalogBackupPath()) : null)
     ?? readCatalog(activeCodexModelsCachePath())
     ?? active;
+  if (recovered) return recovered;
+
+  // A first-time MOMO Switch install can run before Codex CLI/App has created a
+  // bundled catalog. The fallback entry builder deliberately supports a null
+  // template, so create a minimal catalog instead of silently skipping /model.
+  // Existing/custom catalog paths still require a readable source to avoid
+  // replacing a user-owned catalog that merely became temporarily unavailable.
+  return isDefaultCatalogPath(path) ? { models: [] } : null;
 }
 
 function retainedCatalogSyncEvidence(

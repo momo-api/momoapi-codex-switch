@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.0-momo.2/momo-api-momoapi-codex-switch-2.29.0.tgz"
+$PackageReleaseUrl = "https://github.com/momo-api/momoapi-codex-switch/releases/download/v2.29.1-momo.1/momo-api-momoapi-codex-switch-2.29.1.tgz"
 $ApiBaseUrl = "https://momoapi.us/v1"
 
 function Write-Step([string]$Message) {
@@ -125,17 +125,22 @@ try {
 
   if ($existingOcx) {
     Write-Step "Stopping the existing local Switch service..."
-    & $existingOcx service stop
+    # A stale pre-MOMO install can print a harmless restore warning here. The
+    # installer immediately writes the new MOMO routing, so keep that residue
+    # out of the beginner-facing installation output.
+    & $existingOcx service stop *>$null
     if ($LASTEXITCODE -ne 0) {
       Write-Warning "The previous service did not stop cleanly. Continuing with the runtime update."
     } else {
-      Start-Sleep -Seconds 2
+      Start-Sleep -Seconds 4
     }
   }
 
   Write-Step "Downloading compact MOMO Switch package (about 3 MB)..."
   Write-Step "Installing the local Switch runtime..."
-  & $npm install --global --omit=dev $PackageReleaseUrl
+  # npm 11 can disable dependency install scripts by default. MOMO Switch ships
+  # Bun as its local runtime, so explicitly allow that one trusted dependency.
+  & $npm install --global --omit=dev --allow-scripts=bun $PackageReleaseUrl
   if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
   $ocx = Get-OcxCommand $npm
 
