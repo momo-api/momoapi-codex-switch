@@ -1531,9 +1531,17 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     id: "momo-responses", label: "MOMO API (Responses)", adapter: "openai-responses", baseUrl: "https://momoapi.us/v1", authKind: "key",
     dashboardUrl: "https://momoapi.us/console/user", defaultModel: "gpt-5.5", liveModels: false,
     models: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "deepseek-v4-flash", "deepseek-v4-pro", "ox-alpha-free"],
+    // MOMO's DeepSeek route accepts Responses requests, but Codex's full
+    // additional_tools/namespace surface is only reliably replayed when it crosses
+    // OpenCodeX's established Responses -> Chat Completions -> Responses bridge.
+    // Keep the rest of the MOMO OpenAI catalog on its native Responses wire.
+    modelWireDefaults: {
+      "deepseek-v4-flash": "openai-chat",
+      "deepseek-v4-pro": "openai-chat",
+    },
     modelReasoningEfforts: { "ox-alpha-free": ["low", "high", "max"] },
     modelDefaultReasoningEfforts: { "ox-alpha-free": "low" },
-    note: "MOMO native OpenAI Responses models. Enable only models verified by MOMO for production use.",
+    note: "MOMO OpenAI models. DeepSeek uses OpenCodeX's Chat tool-replay bridge for Codex compatibility.",
   },
   {
     id: "momo-claude", label: "MOMO API (Claude)", adapter: "anthropic", baseUrl: "https://momoapi.us", authKind: "key",

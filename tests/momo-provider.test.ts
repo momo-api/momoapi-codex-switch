@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { createOpenAIChatAdapter } from "../src/adapters/openai-chat";
+import { buildResponseJSON } from "../src/bridge";
 import { createGoogleAdapter } from "../src/adapters/google";
 import { providerConfigSeed } from "../src/providers/derive";
 import { getProviderRegistryEntry } from "../src/providers/registry";
+import { parseRequest } from "../src/responses/parser";
+import { resolveWireProtocolOverride } from "../src/server/adapter-resolve";
+import { buildToolBridgeMaps } from "../src/server/responses";
 import { applyMomoDesktopCompatibilityAliases, momoProviderConfigs, removeMomoDesktopCompatibilityAliases } from "../src/cli/momo";
 import type { OcxParsedRequest } from "../src/types";
+import { createTestTranslatorBudget } from "./helpers/translator-budget";
 
 const parsed = {
   modelId: "gemini-3.7-flash",
@@ -39,6 +45,48 @@ describe("MOMO provider presets", () => {
     expect(providers["momo-gemini"]?.adapter).toBe("google");
     expect(Object.values(providers).every(provider => provider.apiKey === "momo-test-key")).toBe(true);
     expect(providers["momo-claude"]?.headers?.["User-Agent"]).toBe("momoapi-codex-switch");
+  });
+
+  test("routes DeepSeek through the established Chat tool-replay bridge", async () => {
+    const provider = momoProviderConfigs("momo-test-key")["momo-responses"]!;
+    const resolved = resolveWireProtocolOverride("momo-responses", "deepseek-v4-pro", provider, "responses");
+    expect(resolved.adapter).toBe("openai-chat");
+
+    const request = parseRequest({
+      model: "momo-responses/deepseek-v4-pro",
+      input: "Apply the patch.",
+      stream: false,
+      tools: [{ type: "custom", name: "apply_patch", description: "Apply a patch" }],
+    });
+    const adapter = createOpenAIChatAdapter(resolved);
+    const upstream = await adapter.buildRequest(request);
+    const upstreamBody = JSON.parse(String(upstream.body)) as { tools?: Array<{ function?: { name?: string } }> };
+    expect(upstream.url).toBe("https://momoapi.us/v1/chat/completions");
+    expect(upstreamBody.tools?.[0]?.function?.name).toBe("apply_patch");
+
+    const events = await adapter.parseResponse!(Response.json({
+      choices: [{
+        message: {
+          role: "assistant",
+          tool_calls: [{
+            id: "call_patch",
+            type: "function",
+            function: { name: "apply_patch", arguments: '{"input":"*** Begin Patch\\n*** End Patch"}' },
+          }],
+        },
+        finish_reason: "tool_calls",
+      }],
+    }), createTestTranslatorBudget());
+    const maps = buildToolBridgeMaps(request);
+    const replay = buildResponseJSON(events, request.modelId, {
+      toolNsMap: maps.toolNsMap,
+      declaredToolNames: maps.declaredToolNames,
+      freeformToolNames: maps.freeformToolNames,
+      toolSearchToolNames: maps.toolSearchToolNames,
+    });
+    expect(replay.output).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "custom_tool_call", name: "apply_patch" }),
+    ]));
   });
 
   test("creates honest native aliases for the three Codex Desktop picker slots", () => {
