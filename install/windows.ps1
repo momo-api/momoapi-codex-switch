@@ -98,9 +98,18 @@ $npm = Get-NpmCommand
 $key = Get-PlaintextKey $ApiKey
 if (-not $key) { throw "A MOMO API key is required." }
 $previousMomoApiKey = $env:MOMO_API_KEY
+$previousCodexHome = $env:CODEX_HOME
 
-$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+$userProfile = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
+$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $userProfile ".codex" }
 New-Item -ItemType Directory -Force -Path $codexHome | Out-Null
+$codexConfig = Join-Path $codexHome "config.toml"
+if (-not (Test-Path $codexConfig)) {
+  Write-Step "Preparing Codex configuration..."
+  [System.IO.File]::WriteAllText($codexConfig, "", [System.Text.UTF8Encoding]::new($false))
+}
+# Use the Windows profile path for this setup and the background service.
+$env:CODEX_HOME = $codexHome
 
 try {
   Write-Step "Checking MOMO API key..."
@@ -148,6 +157,11 @@ try {
     Remove-Item Env:MOMO_API_KEY -ErrorAction SilentlyContinue
   } else {
     $env:MOMO_API_KEY = $previousMomoApiKey
+  }
+  if ($null -eq $previousCodexHome) {
+    Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue
+  } else {
+    $env:CODEX_HOME = $previousCodexHome
   }
   $key = ""
 }

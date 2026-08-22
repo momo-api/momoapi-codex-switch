@@ -119,6 +119,15 @@ describe("install scripts", () => {
     expect(script).not.toContain("bun.sh/install.ps1");
   });
 
+  test("MOMO Windows installer initializes and passes an explicit Codex home", async () => {
+    const script = await readText("install/windows.ps1");
+
+    expect(script).toContain("$env:USERPROFILE");
+    expect(script).toContain("Join-Path $userProfile \".codex\"");
+    expect(script).toContain("[System.IO.File]::WriteAllText($codexConfig");
+    expect(script).toContain("$env:CODEX_HOME = $codexHome");
+  });
+
   test("Node launcher handles npm self-update before starting Bun", async () => {
     const launcher = await readText("bin/ocx.mjs");
 
