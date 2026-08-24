@@ -172,7 +172,8 @@ function Resolve-MomoSwitchPackage {
         }
       }
       if ($sha) {
-        $version = if ($release.tag_name) { $release.tag_name.ToString().TrimStart("v") } else { Get-PackageVersionFromUrl $packageAsset.browser_download_url }
+        $version = Get-PackageVersionFromUrl $packageAsset.browser_download_url
+        if (-not $version -and $release.tag_name) { $version = $release.tag_name.ToString().TrimStart("v") }
         return [pscustomobject]@{ Url = $packageAsset.browser_download_url; Sha256 = $sha; Version = $version; Source = "GitHub Release" }
       }
       Write-Warning "GitHub release package was found, but no SHA256 digest was available. Falling back to MOMO mirror."

@@ -171,7 +171,7 @@ resolve_momo_package_from_github() {
         if (!asset?.browser_download_url) return;
         const digest = String(asset.digest || "").match(/^sha256:([a-f0-9]{64})$/i)?.[1]?.toLowerCase() || "";
         const shaAsset = assets.find((item) => String(item.name || "") === String(asset.name || "") + ".sha256") || assets.find((item) => /\.sha256$/i.test(String(item.name || "")));
-        const version = String(release.tag_name || "").replace(/^v/, "") || String(asset.name).match(re)?.[1] || "";
+        const version = String(asset.name).match(re)?.[1] || String(release.tag_name || "").replace(/^v/, "") || "";
         process.stdout.write([asset.browser_download_url, digest, shaAsset?.browser_download_url || "", version].join("\t"));
       } catch {}
     });
