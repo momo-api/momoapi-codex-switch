@@ -332,19 +332,61 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
+          pkg_name="$(node -p "require('./package.json').name")"
           for attempt in $(seq 1 30); do
-            if VERSION=$(npm view "@bitkyc08/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
+            if VERSION=$(npm view "${pkg_name}@${RELEASE_VERSION}" version 2>/dev/null); then
               echo "registry version=$VERSION"
               test "$VERSION" = "$RELEASE_VERSION"
-              npm dist-tag ls @bitkyc08/opencodex
+              npm dist-tag ls "$pkg_name"
               exit 0
             fi
-            echo "::notice::@bitkyc08/opencodex@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
+            echo "::notice::${pkg_name}@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
             sleep 10
           done
           echo "::error::npm registry smoke failed after 30 attempts"
-          npm view @bitkyc08/opencodex versions dist-tags --json || true
+          npm view "$pkg_name" versions dist-tags --json || true
           exit 1
+
+      - name: Build installer package artifact
+        if: ${{ inputs.dry-run != true }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          pack_json="$RUNNER_TEMP/momoapi-npm-pack.json"
+          npm pack --json > "$pack_json"
+          release_package="$(node -p "require(process.argv[1])[0].filename" "$pack_json")"
+          test -f "$release_package" || {
+            echo "::error::npm pack did not create ${release_package}"
+            exit 1
+          }
+
+          release_sha256="$(sha256sum "$release_package" | awk '{print $1}')"
+          printf "%s  %s\n" "$release_sha256" "$release_package" > "${release_package}.sha256"
+
+          manifest_file="$GITHUB_WORKSPACE/.momoapi-codex-switch-latest.json"
+          node - <<'NODE' "$manifest_file" "$RELEASE_VERSION" "$release_package" "$release_sha256" "$GITHUB_SHA" "$GITHUB_REPOSITORY"
+          const fs = require("node:fs");
+          const [out, version, fileName, sha256, commit, repository] = process.argv.slice(2);
+          const manifest = {
+            version,
+            name: fileName,
+            url: `https://momoapi.us/install/packages/${fileName}`,
+            sha256,
+            commit,
+            repository,
+            published_at: new Date().toISOString(),
+          };
+          fs.writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+
+          {
+            echo "RELEASE_PACKAGE=$release_package"
+            echo "RELEASE_PACKAGE_SHA256=$release_sha256"
+            echo "RELEASE_PACKAGE_SHA_FILE=${release_package}.sha256"
+            echo "RELEASE_MANIFEST=$manifest_file"
+          } >> "$GITHUB_ENV"
 
       - name: Create GitHub release
         if: ${{ inputs.dry-run != true }}
@@ -380,4 +422,25 @@ jobs:
           fi
 
           gh release create "$release_tag" --target "$GITHUB_SHA" --title "$release_tag" \
-            --notes-file "$notes_file" ${prerelease_flag:+$prerelease_flag}
+            --notes-file "$notes_file" ${prerelease_flag:+$prerelease_flag} \
+            "$RELEASE_PACKAGE" \
+            "$RELEASE_PACKAGE_SHA_FILE" \
+            "$RELEASE_MANIFEST#latest.json"
+
+      - name: Upload installer package to Cloudflare R2
+        if: ${{ inputs.dry-run != true }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_R2_BUCKET: ${{ secrets.CF_R2_BUCKET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] || [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CF_R2_BUCKET:-}" ]; then
+            echo "::notice::Cloudflare R2 secrets are not configured; GitHub Release assets were created, skipping CDN sync."
+            exit 0
+          fi
+
+          npx --yes wrangler@latest r2 object put "${CF_R2_BUCKET}/install/packages/${RELEASE_PACKAGE}" --file "$RELEASE_PACKAGE"
+          npx --yes wrangler@latest r2 object put "${CF_R2_BUCKET}/install/packages/${RELEASE_PACKAGE}.sha256" --file "$RELEASE_PACKAGE_SHA_FILE"
+          npx --yes wrangler@latest r2 object put "${CF_R2_BUCKET}/install/latest.json" --file "$RELEASE_MANIFEST"

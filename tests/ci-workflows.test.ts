@@ -787,12 +787,25 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toMatch(/gh release create[\s\S]*?--notes-file "\$notes_file"/);
     expect(workflow).not.toContain("gh release edit");
     expect(workflow).not.toContain("--generate-notes");
+    expect(workflow).toContain("- name: Build installer package artifact");
+    expect(workflow).toContain("npm pack --json");
+    expect(workflow).toContain(".momoapi-codex-switch-latest.json");
+    expect(workflow).toContain("https://momoapi.us/install/packages/");
+    expect(workflow).toContain("RELEASE_PACKAGE_SHA_FILE");
+    expect(workflow).toContain("- name: Upload installer package to Cloudflare R2");
+    expect(workflow).toContain("wrangler@latest r2 object put");
+    expect(workflow).toContain("install/latest.json");
+    expect(workflow).toContain("CF_R2_BUCKET");
+    expect(workflow).not.toContain("@bitkyc08/opencodex@${RELEASE_VERSION}");
 
     const createStep = workflow
       .split("- name: Create GitHub release")[1]!
       .split(/\n {6}- name:/)[0]!;
     expect(createStep).toContain('notes_file="$GITHUB_WORKSPACE/.release-notes.md"');
     expect(createStep).toContain('test -s "$notes_file"');
+    expect(createStep).toContain('"$RELEASE_PACKAGE"');
+    expect(createStep).toContain('"$RELEASE_PACKAGE_SHA_FILE"');
+    expect(createStep).toContain('"$RELEASE_MANIFEST#latest.json"');
     expect(createStep).not.toContain("generate-notes");
     expect(createStep).not.toContain("gh api");
     expect(createStep.indexOf('test -s "$notes_file"')).toBeLessThan(

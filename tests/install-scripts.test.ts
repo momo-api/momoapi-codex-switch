@@ -133,6 +133,48 @@ describe("install scripts", () => {
     expect(script).not.toContain("Ensure-CodexApiKeyAuth");
   });
 
+  test("MOMO Windows legacy migration preserves root-level array values", async () => {
+    const script = await readText("install/windows.ps1");
+
+    expect(script).toContain("function Find-TomlFirstTableOffset");
+    expect(script).toContain("Only a line that begins");
+    expect(script).toContain("$rootEnd = Find-TomlFirstTableOffset $content");
+    expect(script).not.toContain('$content.IndexOf("[")');
+  });
+
+  test("MOMO hosted installers resolve the latest package through the CDN manifest", async () => {
+    const windows = await readText("install/windows.ps1");
+    const unix = await readText("install/unix.sh");
+
+    for (const script of [windows, unix]) {
+      expect(script).toContain("https://momoapi.us/install/latest.json");
+      expect(script).toContain("https://api.github.com/repos/momo-api/momoapi-codex-switch/releases/latest");
+      expect(script).toContain("MOMO_PACKAGE_URL");
+      expect(script).toContain("MOMO Cloudflare CDN");
+      expect(script).toContain("MOMO mirror fallback");
+      expect(script).toContain("Skipping download");
+      expect(script).toContain("@momo-api/momoapi-codex-switch");
+    }
+
+    expect(windows).toContain("Resolve-MomoSwitchPackageFromManifest");
+    expect(unix).toContain("resolve_momo_package_from_manifest");
+    expect(windows).not.toContain("Downloading MOMO-hosted Switch package");
+    expect(unix).not.toContain("Downloading MOMO-hosted Switch package");
+  });
+
+  test("MOMO Windows history diagnostic is read-only and discoverable", async () => {
+    const installer = await readText("install/windows.ps1");
+    const diagnostic = await readText("install/codex-history-diagnose.ps1");
+
+    expect(installer).toContain("codex-history-diagnose.ps1");
+    expect(diagnostic).toContain("No files were modified");
+    expect(diagnostic).toContain("state_5.sqlite");
+    expect(diagnostic).toContain("ocx recover-history --legacy-openai");
+    expect(diagnostic).toContain("ocx restore back");
+    expect(diagnostic).not.toContain("Remove-Item");
+    expect(diagnostic).not.toContain("Copy-Item");
+  });
+
   test("Node launcher handles npm self-update before starting Bun", async () => {
     const launcher = await readText("bin/ocx.mjs");
 

@@ -9,8 +9,10 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://momoapi.us/install/packages/momoapi-codex-switch-2.29.15.tgz"
-$PackageSha256 = "81bc1db9250c2131dcbf6c34bcc48db7b32b8c96f2bff161756ef3b4a84a61d8"
+$MomoPackageManifestUrl = "https://momoapi.us/install/latest.json"
+$GitHubLatestReleaseApi = "https://api.github.com/repos/momo-api/momoapi-codex-switch/releases/latest"
+$FallbackPackageReleaseUrl = "https://momoapi.us/install/packages/momoapi-codex-switch-2.29.15.tgz"
+$FallbackPackageSha256 = "81bc1db9250c2131dcbf6c34bcc48db7b32b8c96f2bff161756ef3b4a84a61d8"
 $NpmRegistry = if ($env:MOMO_NPM_REGISTRY) { $env:MOMO_NPM_REGISTRY.TrimEnd("/") } else { "https://registry.npmmirror.com" }
 $ApiBaseUrl = "https://momoapi.us/v1"
 
@@ -106,6 +108,82 @@ function Remove-MomoSwitchLaunchers([string]$NpmCommand) {
   }
 }
 
+function Get-InstalledMomoSwitchVersion([string]$NpmCommand) {
+  try {
+    $json = & $NpmCommand list --global --depth=0 --json "@momo-api/momoapi-codex-switch" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $json) { return $null }
+    $parsed = $json | ConvertFrom-Json
+    return $parsed.dependencies.'@momo-api/momoapi-codex-switch'.version
+  } catch {
+    return $null
+  }
+}
+
+function Get-PackageVersionFromUrl([string]$Url) {
+  $match = [regex]::Match($Url, 'momoapi-codex-switch-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz')
+  if ($match.Success) { return $match.Groups[1].Value }
+  $match = [regex]::Match($Url, 'momo-api-momoapi-codex-switch-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz')
+  if ($match.Success) { return $match.Groups[1].Value }
+  return $null
+}
+
+function Read-Sha256FromText([string]$Text) {
+  $match = [regex]::Match($Text, '(?i)\b([a-f0-9]{64})\b')
+  if ($match.Success) { return $match.Groups[1].Value.ToLowerInvariant() }
+  return $null
+}
+
+function Resolve-MomoSwitchPackageFromManifest {
+  try {
+    $manifest = Invoke-RestMethod -UseBasicParsing -Method Get -Uri $MomoPackageManifestUrl -Headers @{ "User-Agent" = "momoapi-codex-switch-installer" } -TimeoutSec 30
+    $url = if ($manifest.url) { $manifest.url.ToString().Trim() } elseif ($manifest.package_url) { $manifest.package_url.ToString().Trim() } else { "" }
+    $sha = if ($manifest.sha256) { $manifest.sha256.ToString().Trim().ToLowerInvariant() } else { "" }
+    if (-not $url -or -not ($sha -match "^[a-f0-9]{64}$")) { return $null }
+    $version = if ($manifest.version) { $manifest.version.ToString().TrimStart("v") } else { Get-PackageVersionFromUrl $url }
+    return [pscustomobject]@{ Url = $url; Sha256 = $sha; Version = $version; Source = "MOMO Cloudflare CDN" }
+  } catch {
+    return $null
+  }
+}
+
+function Resolve-MomoSwitchPackage {
+  if ($env:MOMO_PACKAGE_URL) {
+    $url = $env:MOMO_PACKAGE_URL.Trim()
+    $sha = if ($env:MOMO_PACKAGE_SHA256) { $env:MOMO_PACKAGE_SHA256.Trim().ToLowerInvariant() } else { "" }
+    return [pscustomobject]@{ Url = $url; Sha256 = $sha; Version = (Get-PackageVersionFromUrl $url); Source = "MOMO_PACKAGE_URL" }
+  }
+
+  $manifestPackage = Resolve-MomoSwitchPackageFromManifest
+  if ($manifestPackage) { return $manifestPackage }
+  Write-Warning "Could not resolve the latest package from MOMO Cloudflare CDN. Trying GitHub Release."
+
+  try {
+    $release = Invoke-RestMethod -UseBasicParsing -Method Get -Uri $GitHubLatestReleaseApi -Headers @{ "User-Agent" = "momoapi-codex-switch-installer" } -TimeoutSec 30
+    $assets = @($release.assets)
+    $packageAsset = $assets | Where-Object { $_.name -match '^momo-api-momoapi-codex-switch-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.tgz$' } | Select-Object -First 1
+    if ($packageAsset) {
+      $sha = $null
+      if ($packageAsset.digest -match '^sha256:([a-fA-F0-9]{64})$') { $sha = $Matches[1].ToLowerInvariant() }
+      if (-not $sha) {
+        $shaAsset = $assets | Where-Object { $_.name -eq "$($packageAsset.name).sha256" -or $_.name -match '\.sha256$' } | Select-Object -First 1
+        if ($shaAsset) {
+          $shaText = (Invoke-WebRequest -UseBasicParsing -Uri $shaAsset.browser_download_url -TimeoutSec 30).Content
+          $sha = Read-Sha256FromText $shaText
+        }
+      }
+      if ($sha) {
+        $version = if ($release.tag_name) { $release.tag_name.ToString().TrimStart("v") } else { Get-PackageVersionFromUrl $packageAsset.browser_download_url }
+        return [pscustomobject]@{ Url = $packageAsset.browser_download_url; Sha256 = $sha; Version = $version; Source = "GitHub Release" }
+      }
+      Write-Warning "GitHub release package was found, but no SHA256 digest was available. Falling back to MOMO mirror."
+    }
+  } catch {
+    Write-Warning "Could not resolve the latest package from GitHub. Falling back to MOMO mirror."
+  }
+
+  return [pscustomobject]@{ Url = $FallbackPackageReleaseUrl; Sha256 = $FallbackPackageSha256; Version = (Get-PackageVersionFromUrl $FallbackPackageReleaseUrl); Source = "MOMO mirror fallback" }
+}
+
 function Get-CodexCommand([string]$NpmCommand) {
   $codex = Get-Command codex -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($codex) { return $codex.Source }
@@ -169,12 +247,25 @@ function Test-LocalSwitchReady {
 }
 
 function Install-MomoSwitchPackage([string]$NpmCommand) {
+  $packageInfo = Resolve-MomoSwitchPackage
+  $installedVersion = Get-InstalledMomoSwitchVersion $NpmCommand
+  if ($packageInfo.Version -and $installedVersion -eq $packageInfo.Version) {
+    try {
+      $null = Get-OcxCommand $NpmCommand
+      Write-Step "Local Switch runtime is already $installedVersion from the latest package. Skipping download."
+      return
+    } catch {
+      Write-Warning "Package version $installedVersion is installed, but the launcher is missing. Reinstalling."
+    }
+  }
+
   $packagePath = Join-Path ([System.IO.Path]::GetTempPath()) "momoapi-codex-switch-$([Guid]::NewGuid().ToString('N')).tgz"
   try {
-    Invoke-WebRequest -UseBasicParsing -Uri $PackageReleaseUrl -OutFile $packagePath -TimeoutSec 120
+    Write-Step "Downloading Switch package from $($packageInfo.Source) (about 4 MB)..."
+    Invoke-WebRequest -UseBasicParsing -Uri $packageInfo.Url -OutFile $packagePath -TimeoutSec 120
     $actualSha256 = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actualSha256 -ne $PackageSha256.ToLowerInvariant()) {
-      throw "MOMO Switch package integrity check failed. Expected $PackageSha256 but received $actualSha256."
+    if (-not $packageInfo.Sha256 -or $actualSha256 -ne $packageInfo.Sha256.ToLowerInvariant()) {
+      throw "MOMO Switch package integrity check failed. Expected $($packageInfo.Sha256) but received $actualSha256."
     }
 
     Remove-MomoSwitchLaunchers $NpmCommand
@@ -350,7 +441,6 @@ try {
     Start-Sleep -Seconds 4
   }
 
-  Write-Step "Downloading MOMO-hosted Switch package (about 4 MB)..."
   Write-Step "Installing the local Switch runtime..."
   # npm 11 can disable dependency install scripts by default. MOMO Switch ships
   # Bun as its local runtime, so explicitly allow that one trusted dependency.
