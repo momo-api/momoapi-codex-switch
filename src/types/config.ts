@@ -239,6 +239,23 @@ export interface OcxClientIntegrationsConfig {
   "claude-desktop"?: boolean;
 }
 
+export interface OcxMomoModelAutoSyncConfig {
+  /** Background sync for MOMO-hosted /v1/models into local static providers and combos. Default off. */
+  enabled?: boolean;
+  /** Poll interval in minutes. Default 60; clamped by the runtime to 1..1440. */
+  intervalMinutes?: number;
+  /** Create short public combo aliases for newly discovered text models. Default true. */
+  autoCreateCombos?: boolean;
+  /** Refresh the Codex catalog/cache after a changed sync. Default true. */
+  autoRefreshCatalog?: boolean;
+  /** Configure the /v1/images relay provider when image models are discovered. Default true. */
+  includeImageModels?: boolean;
+  /** Publish unclassified safe ids through momo-responses. Default false. */
+  exposeUnknownModels?: boolean;
+  /** Log a concise summary when models are added. Default true. */
+  notifyOnChanges?: boolean;
+}
+
 export interface OcxConfig {
   port: number;
   /** Opt in to one identical-turn retry when a Responses completion has no text or tool call. */
@@ -247,6 +264,8 @@ export interface OcxConfig {
   managementUsageMaxReadBytes?: number;
   providers: Record<string, OcxProviderConfig>;
   defaultProvider: string;
+  /** MOMO Switch: periodically import newly published momoapi.us models into local static routing. */
+  momoModelAutoSync?: OcxMomoModelAutoSyncConfig;
   /** OpenAI provider-contract migration marker (v2 = single `openai` provider with account mode). */
   openaiProviderTierVersion?: 1 | 2;
   /** One-time migration marker for Antigravity's static-catalog defaults. */

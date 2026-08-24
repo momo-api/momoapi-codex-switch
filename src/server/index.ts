@@ -49,6 +49,7 @@ import { activateLab, labActivationRequired } from "../lib/lab-activation";
 import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup";
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
 import { runModelRenameStartupMigration } from "../providers/model-rename-startup";
+import { startMomoModelAutoSync, type MomoModelAutoSyncHandle } from "../momo/model-auto-sync";
 import { isCanonicalOpenAiForwardProvider, OPENAI_CODEX_PROVIDER_ID } from "../providers/openai-tiers";
 import { providerCodexAccountMode } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
@@ -501,6 +502,7 @@ export function startServer(port?: number, deps: StartServerDeps = {}): Server<W
   assertServerAuthConfig(config);
   const managementAuth = deps.managementAuthState ?? initializeManagementAuthState(config);
   let userCostOverlayReconciler: { stop(): void } | null = null;
+  let momoModelAutoSync: MomoModelAutoSyncHandle | null = null;
   // Arm synchronously before listen. A pending journal therefore makes __main__ unusable
   // before any request can resolve its physical credential, while health/management/Pool stay live.
   // Refresh OAuth provider presets (models/noReasoningModels) from the registry so a proxy update
@@ -732,6 +734,7 @@ export function startServer(port?: number, deps: StartServerDeps = {}): Server<W
     // Started inside the guarded startup transaction so the catch below can
     // release the owner-scoped lease on any listener failure.
     userCostOverlayReconciler = startUserCostOverlayReconciler({ liveConfig: config });
+    momoModelAutoSync = startMomoModelAutoSync(config, { log: console });
     const serveOptions = {
       idleTimeout: 255,
       maxRequestBodySize: MAX_DECOMPRESSED_BODY_BYTES,
@@ -1715,6 +1718,7 @@ export function startServer(port?: number, deps: StartServerDeps = {}): Server<W
       }
     }
   } catch (error) {
+    momoModelAutoSync?.stop();
     userCostOverlayReconciler?.stop();
     backgroundLifecycle?.releaseAfterFailedStart();
     void nativeMainLifecycle.release();
@@ -1736,6 +1740,7 @@ export function startServer(port?: number, deps: StartServerDeps = {}): Server<W
             ? [() => loopbackListenerRef.stop(closeActiveConnections)]
             : []),
           async () => {
+            momoModelAutoSync?.stop();
             userCostOverlayReconciler?.stop();
           },
         ],

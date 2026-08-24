@@ -534,8 +534,9 @@ describe("combo validation and normalization", () => {
     };
     expect(comboAliasIssues("new", "plain-model", combos)).toEqual([]);
     expect(comboAliasIssues("new", "vendor/model", combos)).toEqual([]);
+    expect(comboAliasIssues("new", "gpt-5.6-luna-lite", combos)).toEqual([]);
     expect(comboAliasIssues("new", "combo/model", combos)[0]?.message).toContain("reserved");
-    expect(comboAliasIssues("new", "gpt-5", combos)[0]?.message).toContain("OpenAI native family");
+    expect(comboAliasIssues("new", "gpt-5.5", combos)[0]?.message).toContain("known OpenAI native models");
     expect(comboAliasIssues("new", "gpt-5.6-sol", combos, { allowNativeAlias: true })).toEqual([]);
     expect(comboAliasIssues("new", "deepseek-v4-flash", combos)[0]?.message).toContain("already used");
     expect(comboAliasIssues("renamed", "deepseek-v4-flash", combos, {

@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$PackageReleaseUrl = "https://momoapi.us/install/packages/momoapi-codex-switch-2.29.13.tgz"
-$PackageSha256 = "17cb476588a4092c31b4f709151d1aff95ffbb67ea4a2e75f508406c89b3cb6f"
+$PackageReleaseUrl = "https://momoapi.us/install/packages/momoapi-codex-switch-2.29.15.tgz"
+$PackageSha256 = "81bc1db9250c2131dcbf6c34bcc48db7b32b8c96f2bff161756ef3b4a84a61d8"
 $NpmRegistry = if ($env:MOMO_NPM_REGISTRY) { $env:MOMO_NPM_REGISTRY.TrimEnd("/") } else { "https://registry.npmmirror.com" }
 $ApiBaseUrl = "https://momoapi.us/v1"
 
@@ -73,6 +73,37 @@ function Get-OcxCommand([string]$NpmCommand) {
     if (Test-Path $candidate) { return $candidate }
   }
   throw "momoapi-codex-switch installed, but its ocx launcher was not found."
+}
+
+function Get-NpmGlobalPrefix([string]$NpmCommand) {
+  $prefix = (& $NpmCommand prefix --global).Trim()
+  if (-not $prefix) { throw "npm returned an empty global prefix." }
+  return $prefix
+}
+
+function Remove-MomoSwitchLaunchers([string]$NpmCommand) {
+  $prefix = Get-NpmGlobalPrefix $NpmCommand
+  $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+  $launchers = @(
+    "ocx", "ocx.cmd", "ocx.ps1",
+    "momoapi-codex-switch", "momoapi-codex-switch.cmd", "momoapi-codex-switch.ps1"
+  )
+
+  foreach ($launcher in $launchers) {
+    $path = Join-Path $prefix $launcher
+    if (-not (Test-Path -LiteralPath $path)) { continue }
+
+    try {
+      Remove-Item -LiteralPath $path -Force
+    } catch {
+      $backup = "$path.momoapi-upgrade-$timestamp.bak"
+      try {
+        Move-Item -LiteralPath $path -Destination $backup -Force
+      } catch {
+        Write-Warning "Could not remove old npm launcher $path. npm will retry with --force."
+      }
+    }
+  }
 }
 
 function Get-CodexCommand([string]$NpmCommand) {
@@ -146,7 +177,8 @@ function Install-MomoSwitchPackage([string]$NpmCommand) {
       throw "MOMO Switch package integrity check failed. Expected $PackageSha256 but received $actualSha256."
     }
 
-    & $NpmCommand install --global --omit=dev --allow-scripts=bun --registry $NpmRegistry $packagePath
+    Remove-MomoSwitchLaunchers $NpmCommand
+    & $NpmCommand install --global --force --omit=dev --allow-scripts=bun --registry $NpmRegistry $packagePath
     if ($LASTEXITCODE -ne 0) { throw "npm could not install momoapi-codex-switch." }
   } finally {
     Remove-Item -LiteralPath $packagePath -Force -ErrorAction SilentlyContinue
@@ -208,11 +240,32 @@ function Repair-MomoSwitchService([string]$OcxCommand) {
   }
 }
 
+function Find-TomlFirstTableOffset([string]$Content) {
+  if ([string]::IsNullOrEmpty($Content)) { return -1 }
+
+  # Root-level values may contain arrays, e.g. Codex Desktop writes:
+  #   notify = [ "...codex-computer-use.exe", "turn-ended" ]
+  # Therefore do not split on the first '[' character. Only a line that begins
+  # with a TOML table header ([table] or [[array_table]]) ends the root section.
+  $tableHeaderPattern = '^[ \t]*\[\[?[ \t]*(?:"(?:\\.|[^"\\])*"|''(?:[^'']|'''')*''|[A-Za-z0-9_-]+)(?:[ \t]*\.[ \t]*(?:"(?:\\.|[^"\\])*"|''(?:[^'']|'''')*''|[A-Za-z0-9_-]+))*[ \t]*\]\]?[ \t]*(?:#.*)?$'
+  $offset = 0
+  $reader = [System.IO.StringReader]::new($Content)
+  while (($line = $reader.ReadLine()) -ne $null) {
+    if ($line -match $tableHeaderPattern) { return $offset }
+
+    $offset += $line.Length
+    if ($offset -lt $Content.Length -and $Content[$offset] -eq [char]13) { $offset++ }
+    if ($offset -lt $Content.Length -and $Content[$offset] -eq [char]10) { $offset++ }
+  }
+
+  return -1
+}
+
 function Convert-LegacyMomoCodexConfig([string]$CodexConfig, [string]$CatalogPath) {
   if (-not (Test-Path $CodexConfig)) { return $false }
 
   $content = [System.IO.File]::ReadAllText($CodexConfig)
-  $rootEnd = $content.IndexOf("[")
+  $rootEnd = Find-TomlFirstTableOffset $content
   if ($rootEnd -lt 0) { $rootEnd = $content.Length }
   $root = $content.Substring(0, $rootEnd)
   $tables = $content.Substring($rootEnd)
@@ -353,6 +406,7 @@ try {
 
   Write-Host ""
   Write-Host "MOMO Codex Switch is ready. Restart Codex, then select a routed MOMO model in /model."
+  Write-Host "If previous Codex conversations appear missing, run: irm https://momoapi.us/install/codex-history-diagnose.ps1 | iex"
 } finally {
   if ($null -eq $previousMomoApiKey) {
     Remove-Item Env:MOMO_API_KEY -ErrorAction SilentlyContinue

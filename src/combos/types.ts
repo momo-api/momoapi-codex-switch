@@ -144,11 +144,12 @@ export function comboAliasIssues(
     });
   }
   if (!alias.includes("/")
+    && SUPPORTED_NATIVE_OPENAI_SLUGS.has(alias)
     && NATIVE_OPENAI_FAMILY_PATTERN.test(alias)
     && options.allowNativeAlias !== true) {
     issues.push({
       path: ["alias"],
-      message: "bare aliases in the OpenAI native family require nativeAlias=true",
+      message: "bare aliases for known OpenAI native models require nativeAlias=true",
     });
   }
   for (const [otherId, other] of Object.entries(combos ?? {})) {

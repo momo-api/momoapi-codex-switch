@@ -59,6 +59,7 @@ export type {
   OcxCustomModel,
   OcxApiKeyEntry,
   OcxClientIntegrationsConfig,
+  OcxMomoModelAutoSyncConfig,
   OcxConfig,
   OcxAccountPoolRotationStrategy,
   OcxComboStrategy,
@@ -102,4 +103,3 @@ export type {
   CodexAccountCredentials,
   CodexAccountCredentialRecord,
 } from "./types/accounts";
-

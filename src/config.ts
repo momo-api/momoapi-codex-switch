@@ -1193,6 +1193,16 @@ const codexAccountPrioritiesSchema = z.custom<Record<string, unknown>>(
   }
 }).pipe(z.record(z.string(), z.number().int()));
 
+const momoModelAutoSyncSchema = z.object({
+  enabled: z.boolean().optional(),
+  intervalMinutes: z.number().int().min(1).max(24 * 60).optional(),
+  autoCreateCombos: z.boolean().optional(),
+  autoRefreshCatalog: z.boolean().optional(),
+  includeImageModels: z.boolean().optional(),
+  exposeUnknownModels: z.boolean().optional(),
+  notifyOnChanges: z.boolean().optional(),
+}).passthrough();
+
 /**
  * Deliberately permissive. A user's config is not ours to invalidate: a strict
  * entry fails the whole parse, and loadConfig's fallback then backs the file up
@@ -1276,6 +1286,7 @@ const configSchema = z.object({
   ]).optional().catch(undefined),
   providers: z.record(z.string(), providerConfigSchema),
   defaultProvider: z.string().min(1).default("openai"),
+  momoModelAutoSync: momoModelAutoSyncSchema.optional().catch(undefined),
   // A retry can be billable, so absence and malformed hand edits both stay off.
   emptyCompletionRetry: z.boolean().optional().catch(false),
   openaiProviderTierVersion: z.union([z.literal(1), z.literal(2)]).optional(),

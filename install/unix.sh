@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PACKAGE_URL="https://momoapi.us/install/packages/momoapi-codex-switch-2.29.13.tgz"
-PACKAGE_SHA256="17cb476588a4092c31b4f709151d1aff95ffbb67ea4a2e75f508406c89b3cb6f"
+PACKAGE_URL="https://momoapi.us/install/packages/momoapi-codex-switch-2.29.15.tgz"
+PACKAGE_SHA256="81bc1db9250c2131dcbf6c34bcc48db7b32b8c96f2bff161756ef3b4a84a61d8"
 NPM_REGISTRY="${MOMO_NPM_REGISTRY:-https://registry.npmmirror.com}"
 API_BASE_URL="https://momoapi.us/v1"
 NPM_PREFIX="${MOMO_NPM_PREFIX:-$HOME/.local}"

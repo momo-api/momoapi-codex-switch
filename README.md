@@ -37,7 +37,7 @@ curl -fsSL https://momoapi.us/install/momoapi-codex-switch.sh | bash
 ## 使用说明
 
 - 安装时只需输入 MOMO API Key；密钥不会写入命令行参数或 PowerShell 历史记录。MOMO key 只保存在本地 Switch，不会被写入 Codex 的 `auth.json`。
-- 模型列表由 MOMO API 同步，实际可用性和额度以账户权限及上游状态为准。
+- 模型列表由 MOMO API 同步；安装后的本地服务会默认每 1 小时从 MOMO 拉取新增模型，刷新后下次打开 Codex/ChatGPT 桌面版即可看到。实际可用性和额度以账户权限及上游状态为准。
 - Codex 通过本机 `127.0.0.1` 自定义 provider 连接 Switch，不要求 OpenAI API key、ChatGPT 登录或 OpenAI 账号池。列出的模型均使用安装时输入的 MOMO Key。
 - 本地服务默认监听 `127.0.0.1`，MOMO 专用的免鉴权入口只接受本机请求。
 - 安装脚本与发布包均由 `momoapi.us` 承载；Windows 依赖安装默认使用 npm 国内镜像，也可通过 `MOMO_NPM_REGISTRY` 临时覆盖。

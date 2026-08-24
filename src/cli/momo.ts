@@ -6,6 +6,16 @@ import { getProviderRegistryEntry } from "../providers/registry";
 import type { OcxComboConfig, OcxProviderConfig } from "../types";
 
 const MOMO_PROVIDER_IDS = ["momo-responses", "momo-claude", "momo-gemini"] as const;
+const LEGACY_LOCAL_NEWAPI_PROVIDER_ID = "local-newapi";
+const LEGACY_LOCAL_NEWAPI_BASE_URLS = new Set([
+  "http://127.0.0.1:3000/v1",
+  "http://localhost:3000/v1",
+]);
+const LEGACY_LOCAL_NEWAPI_MODELS = new Set([
+  "deepseek-v4-flash",
+  "deepseek-v4-pro",
+  "gpt-5.5",
+]);
 
 type MomoModelAlias = {
   id: string;
@@ -24,11 +34,15 @@ const MOMO_MODEL_ALIASES: readonly MomoModelAlias[] = [
   { id: "gpt-5.6-luna", provider: "momo-responses", displayName: "GPT-5.6 Luna", nativeAlias: true },
   { id: "gpt-5.6-terra", provider: "momo-responses", displayName: "GPT-5.6 Terra", nativeAlias: true },
   { id: "gpt-5.6-sol", provider: "momo-responses", displayName: "GPT-5.6 Sol", nativeAlias: true },
-  { id: "deepseek-v4-flash", provider: "momo-responses", displayName: "DeepSeek V4 Flash" },
+  { id: "deepseek-v4-flash-vision-exp", provider: "momo-responses", displayName: "DeepSeek V4 Flash Vision" },
   { id: "deepseek-v4-pro", provider: "momo-responses", displayName: "DeepSeek V4 Pro" },
   { id: "ox-alpha-free", provider: "momo-responses", displayName: "Ox Alpha Free" },
   { id: "claude-opus-4-6-thinking", provider: "momo-claude", displayName: "Claude Opus 4.6 Thinking" },
   { id: "gemini-3.7-flash", provider: "momo-gemini", displayName: "Gemini 3.7 Flash" },
+];
+
+const MOMO_RETIRED_MODEL_ALIASES: readonly MomoModelAlias[] = [
+  { id: "deepseek-v4-flash", provider: "momo-responses", displayName: "DeepSeek V4 Flash" },
 ];
 
 /**
@@ -116,6 +130,17 @@ function momoModelAliasId(model: MomoModelAlias): string {
  */
 export function applyMomoCodexModelAliases(existing: Record<string, OcxComboConfig> | undefined): Record<string, OcxComboConfig> {
   const combos = removeMomoDesktopCompatibilityAliases(existing);
+  for (const model of MOMO_RETIRED_MODEL_ALIASES) {
+    const id = momoModelAliasId(model);
+    const current = combos[id];
+    const target = current?.targets?.[0];
+    if (current?.alias === model.id
+      && current.targets?.length === 1
+      && target?.provider === model.provider
+      && target?.model === model.id) {
+      delete combos[id];
+    }
+  }
   for (const model of MOMO_MODEL_ALIASES) {
     const id = momoModelAliasId(model);
     const current = combos[id];
@@ -145,6 +170,7 @@ export function applyMomoCodexModelAliases(existing: Record<string, OcxComboConf
 export function hideMomoTransportModelIds(existing: string[] | undefined): string[] {
   const hidden = new Set(existing ?? []);
   for (const model of MOMO_MODEL_ALIASES) hidden.add(routedSlug(model.provider, model.id));
+  for (const model of MOMO_RETIRED_MODEL_ALIASES) hidden.add(routedSlug(model.provider, model.id));
   return [...hidden];
 }
 
@@ -190,6 +216,28 @@ export function momoProviderConfigs(apiKey: string, existing: Record<string, Ocx
   return providers;
 }
 
+function normalizedBaseUrl(value: string | undefined): string {
+  return (value ?? "").trim().replace(/\/+$/g, "").toLowerCase();
+}
+
+function isLegacyLocalNewapiMomoProvider(provider: OcxProviderConfig | undefined): boolean {
+  if (!provider) return false;
+  const models = provider.models ?? [];
+  return provider.adapter === "openai-responses"
+    && LEGACY_LOCAL_NEWAPI_BASE_URLS.has(normalizedBaseUrl(provider.baseUrl))
+    && models.length > 0
+    && models.every(model => LEGACY_LOCAL_NEWAPI_MODELS.has(model));
+}
+
+/** Remove the old local NewAPI bridge created by early MOMO installer flows. */
+export function removeLegacyLocalNewapiMomoProvider(existing: Record<string, OcxProviderConfig> | undefined): Record<string, OcxProviderConfig> {
+  const providers = { ...(existing ?? {}) };
+  if (isLegacyLocalNewapiMomoProvider(providers[LEGACY_LOCAL_NEWAPI_PROVIDER_ID])) {
+    delete providers[LEGACY_LOCAL_NEWAPI_PROVIDER_ID];
+  }
+  return providers;
+}
+
 export async function runMomo(
   rawArgs: string[],
   dependencies: { findLiveProxy: () => Promise<{ port: number } | null> },
@@ -218,6 +266,7 @@ export async function runMomo(
   }
 
   const config = loadConfig();
+  config.providers = removeLegacyLocalNewapiMomoProvider(config.providers);
   Object.assign(config.providers, momoProviderConfigs(apiKey, config.providers));
   config.combos = applyMomoCodexModelAliases(config.combos);
   config.disabledModels = hideMomoTransportModelIds(config.disabledModels);
@@ -231,6 +280,15 @@ export async function runMomo(
       port: proxyPort === 10101 ? 10102 : 10101,
     };
   }
+  config.momoModelAutoSync = {
+    ...(config.momoModelAutoSync ?? {}),
+    enabled: config.momoModelAutoSync?.enabled ?? true,
+    intervalMinutes: config.momoModelAutoSync?.intervalMinutes ?? 60,
+    autoCreateCombos: config.momoModelAutoSync?.autoCreateCombos ?? true,
+    autoRefreshCatalog: config.momoModelAutoSync?.autoRefreshCatalog ?? true,
+    includeImageModels: config.momoModelAutoSync?.includeImageModels ?? true,
+    notifyOnChanges: config.momoModelAutoSync?.notifyOnChanges ?? true,
+  };
   if (setDefault) config.defaultProvider = "momo-responses";
   // Kept only as no-op compatibility flags for installers from 2.29.4-2.29.10.
   // MOMO Switch now always publishes short, real model names instead of three
