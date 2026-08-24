@@ -1195,12 +1195,14 @@ const codexAccountPrioritiesSchema = z.custom<Record<string, unknown>>(
 
 const momoModelAutoSyncSchema = z.object({
   enabled: z.boolean().optional(),
+  catalogMode: z.enum(["momo", "mixed"]).optional(),
   intervalMinutes: z.number().int().min(1).max(24 * 60).optional(),
   autoCreateCombos: z.boolean().optional(),
   autoRefreshCatalog: z.boolean().optional(),
   includeImageModels: z.boolean().optional(),
   exposeUnknownModels: z.boolean().optional(),
   notifyOnChanges: z.boolean().optional(),
+  managedModelIds: z.array(z.string()).optional(),
 }).passthrough();
 
 /**

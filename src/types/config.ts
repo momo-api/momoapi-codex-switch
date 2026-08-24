@@ -242,6 +242,8 @@ export interface OcxClientIntegrationsConfig {
 export interface OcxMomoModelAutoSyncConfig {
   /** Background sync for MOMO-hosted /v1/models into local static providers and combos. Default off. */
   enabled?: boolean;
+  /** Catalog policy for MOMO Switch: momo excludes static OpenAI product rows; mixed keeps the general OpenCodex catalog. */
+  catalogMode?: "momo" | "mixed";
   /** Poll interval in minutes. Default 60; clamped by the runtime to 1..1440. */
   intervalMinutes?: number;
   /** Create short public combo aliases for newly discovered text models. Default true. */
@@ -254,6 +256,8 @@ export interface OcxMomoModelAutoSyncConfig {
   exposeUnknownModels?: boolean;
   /** Log a concise summary when models are added. Default true. */
   notifyOnChanges?: boolean;
+  /** Last authoritative MOMO model roster used to compute removals. Runtime-owned state. */
+  managedModelIds?: string[];
 }
 
 export interface OcxConfig {

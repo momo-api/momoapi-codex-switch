@@ -33,7 +33,9 @@ export interface MomoAutoSyncResult {
   changed: boolean;
   fetched: number;
   addedProviderModels: MomoAutoSyncChange[];
+  removedProviderModels: MomoAutoSyncChange[];
   addedCombos: MomoAutoSyncChange[];
+  removedCombos: MomoAutoSyncChange[];
   skipped: MomoAutoSyncChange[];
   imagesProviderChanged: boolean;
 }
@@ -67,12 +69,14 @@ function effectiveAutoSyncConfig(config: Pick<OcxConfig, "momoModelAutoSync">): 
     : MOMO_DEFAULT_AUTO_SYNC_INTERVAL_MINUTES;
   return {
     enabled: raw.enabled === true,
+    catalogMode: raw.catalogMode ?? "momo",
     intervalMinutes: Math.min(24 * 60, Math.max(1, interval)),
     autoCreateCombos: raw.autoCreateCombos !== false,
     autoRefreshCatalog: raw.autoRefreshCatalog !== false,
     includeImageModels: raw.includeImageModels !== false,
     exposeUnknownModels: raw.exposeUnknownModels === true,
     notifyOnChanges: raw.notifyOnChanges !== false,
+    managedModelIds: [...new Set(raw.managedModelIds ?? [])],
   };
 }
 
@@ -138,6 +142,14 @@ function managedComboFor(provider: string, model: string): OcxComboConfig {
   };
 }
 
+function isManagedCombo(combo: OcxComboConfig | undefined, provider: string, model: string): boolean {
+  return Boolean(combo
+    && combo.alias === model
+    && combo.targets?.length === 1
+    && combo.targets[0]?.provider === provider
+    && combo.targets[0]?.model === model);
+}
+
 export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly string[]): MomoAutoSyncResult {
   const settings = effectiveAutoSyncConfig(config);
   const result: MomoAutoSyncResult = {
@@ -145,7 +157,9 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
     changed: false,
     fetched: modelIds.length,
     addedProviderModels: [],
+    removedProviderModels: [],
     addedCombos: [],
+    removedCombos: [],
     skipped: [],
     imagesProviderChanged: false,
   };
@@ -183,6 +197,7 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
   };
 
   const uniqueModelIds = [...new Set(modelIds.map(id => id.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const currentModelSet = new Set(uniqueModelIds);
   for (const model of uniqueModelIds) {
     const classification = classifyMomoModelId(model, config);
     if (classification.kind === "unknown" || !classification.provider) {
@@ -246,6 +261,48 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
     }
   }
 
+  // The MOMO /models response is authoritative for models previously imported by this
+  // scheduler. Remove only rows we own, leaving user-created provider models and combos intact.
+  const legacyManagedModelIds = settings.managedModelIds.length > 0
+    ? settings.managedModelIds
+    : Object.values(config.combos ?? {}).flatMap(combo => {
+      const target = combo.targets?.[0];
+      return typeof combo.alias === "string"
+        && target?.provider?.startsWith("momo-")
+        && target.model === combo.alias
+        ? [combo.alias]
+        : [];
+    });
+  for (const model of legacyManagedModelIds) {
+    if (currentModelSet.has(model)) continue;
+    const classification = classifyMomoModelId(model, config);
+    const providerId = classification.provider;
+    if (providerId) {
+      const provider = config.providers[providerId];
+      if (provider?.models?.includes(model)) {
+        provider.models = provider.models.filter(candidate => candidate !== model);
+        result.removedProviderModels.push({ model, provider: providerId, kind: classification.kind, reason: "momo-model-removed" });
+        result.changed = true;
+      }
+    }
+    const comboId = momoAutoComboId(model);
+    const combo = config.combos?.[comboId];
+    if (providerId && isManagedCombo(combo, providerId, model)) {
+      const combos = { ...(config.combos ?? {}) };
+      delete combos[comboId];
+      config.combos = combos;
+      const hidden = routedSlug(providerId, model);
+      config.disabledModels = (config.disabledModels ?? []).filter(candidate => candidate !== hidden);
+      result.removedCombos.push({ model, provider: providerId, comboId, kind: classification.kind, reason: "momo-model-removed" });
+      result.changed = true;
+    }
+  }
+
+  config.momoModelAutoSync = {
+    ...(config.momoModelAutoSync ?? {}),
+    managedModelIds: uniqueModelIds,
+  };
+
   return result;
 }
 
@@ -276,7 +333,11 @@ export async function fetchMomoModelIds(config: OcxConfig, deps: Pick<MomoModelA
     headers: { authorization: `Bearer ${apiKey}` },
   });
   if (!response.ok) throw new Error(`MOMO /v1/models returned HTTP ${response.status}`);
-  return readModelIdsFromModelsPayload(await response.json());
+  const modelIds = readModelIdsFromModelsPayload(await response.json());
+  // An empty or malformed roster is not positive evidence that every previously managed
+  // model was retired. Fail closed so a transient gateway/schema problem cannot erase routing.
+  if (modelIds.length === 0) throw new Error("MOMO /v1/models returned an empty or invalid model roster");
+  return modelIds;
 }
 
 export async function runMomoModelAutoSync(config: OcxConfig, deps: MomoModelAutoSyncRunDeps = {}): Promise<MomoAutoSyncResult> {
@@ -286,7 +347,9 @@ export async function runMomoModelAutoSync(config: OcxConfig, deps: MomoModelAut
     changed: false,
     fetched: 0,
     addedProviderModels: [],
+    removedProviderModels: [],
     addedCombos: [],
+    removedCombos: [],
     skipped: [],
     imagesProviderChanged: false,
   };
@@ -303,7 +366,7 @@ export async function runMomoModelAutoSync(config: OcxConfig, deps: MomoModelAut
     }))(config);
   }
   if (settings.notifyOnChanges) {
-    deps.log?.log?.(`[momo] model auto-sync added ${result.addedProviderModels.length} provider model(s), ${result.addedCombos.length} combo(s).`);
+    deps.log?.log?.("[momo] model auto-sync added " + result.addedProviderModels.length + " provider model(s), removed " + result.removedProviderModels.length + ", added " + result.addedCombos.length + " combo(s), removed " + result.removedCombos.length + ".");
   }
   return result;
 }

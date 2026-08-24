@@ -101,6 +101,7 @@ describe("MOMO model auto-sync", () => {
     expect(result.skipped).toContainEqual({ model: "bad/model", kind: "unknown", reason: "unsupported-public-model-id" });
 
     const again = applyMomoModelAutoSync(config, [
+      "gpt-5.5",
       "gpt-5.6-luna-lite",
       "codex-auto-review",
       "claude-opus-4-8-thinking",
@@ -119,6 +120,53 @@ describe("MOMO model auto-sync", () => {
     expect(config.providers["momo-responses"]?.models).toContain("gpt-5.6-luna-lite");
     expect(config.combos).toBeUndefined();
     expect(config.disabledModels ?? []).not.toContain("momo-responses/gpt-5.6-luna-lite");
+  });
+
+  test("retires only models previously managed by the MOMO roster", () => {
+    const config = momoConfig({
+      momoModelAutoSync: {
+        enabled: true,
+        catalogMode: "momo",
+        autoCreateCombos: false,
+        managedModelIds: ["gpt-5.6-luna-lite", "claude-opus-4-8-thinking"],
+      },
+      providers: {
+        ...momoConfig().providers,
+        "momo-responses": {
+          ...momoConfig().providers["momo-responses"],
+          models: ["gpt-5.5", "gpt-5.6-luna-lite", "manual-model"],
+        },
+        "momo-claude": {
+          ...momoConfig().providers["momo-claude"],
+          models: ["claude-opus-4-8-thinking"],
+        },
+      },
+      combos: {
+        [momoAutoComboId("gpt-5.6-luna-lite")]: {
+          alias: "gpt-5.6-luna-lite",
+          targets: [{ provider: "momo-responses", model: "gpt-5.6-luna-lite" }],
+        },
+        [momoAutoComboId("claude-opus-4-8-thinking")]: {
+          alias: "claude-opus-4-8-thinking",
+          targets: [{ provider: "momo-claude", model: "claude-opus-4-8-thinking" }],
+        },
+      },
+    });
+
+    const result = applyMomoModelAutoSync(config, ["gpt-5.5"]);
+
+    expect(result.removedProviderModels.map(row => row.model).sort()).toEqual([
+      "claude-opus-4-8-thinking",
+      "gpt-5.6-luna-lite",
+    ]);
+    expect(result.removedCombos.map(row => row.model).sort()).toEqual([
+      "claude-opus-4-8-thinking",
+      "gpt-5.6-luna-lite",
+    ]);
+    expect(config.providers["momo-responses"]?.models).toEqual(["gpt-5.5", "manual-model"]);
+    expect(config.providers["momo-claude"]?.models).toEqual([]);
+    expect(config.combos).toEqual({});
+    expect(config.momoModelAutoSync?.managedModelIds).toEqual(["gpt-5.5"]);
   });
 
   test("runMomoModelAutoSync fetches once, persists changed config, and refreshes catalog", async () => {

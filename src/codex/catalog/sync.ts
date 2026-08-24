@@ -1478,8 +1478,15 @@ function writeRetainedCatalogSync({
     ...unavailableGatedNativeSlugs,
   ]);
   const hasPhysicalComboProvider = Object.hasOwn(config.providers, COMBO_NAMESPACE);
-  const includeNativeOpenAi = shouldIncludeNativeOpenAi(config);
-  const includeAccountBoundNativeOpenAi = shouldIncludeAccountBoundNativeOpenAi(config);
+  // MOMO Switch is deliberately a narrow product surface. Its hosted model roster is
+  // authoritative for the picker; the static OpenCodex native backfill must not reintroduce
+  // product rows such as gpt-5.3-codex-spark when MOMO did not publish them. The general
+  // OpenCodex runtime keeps the existing mixed behavior behind catalogMode="mixed".
+  const momoOnlyCatalog = config.momoModelAutoSync?.catalogMode !== "mixed"
+    && config.momoModelAutoSync?.enabled === true
+    && Object.hasOwn(config.providers, "momo-responses");
+  const includeNativeOpenAi = !momoOnlyCatalog && shouldIncludeNativeOpenAi(config);
+  const includeAccountBoundNativeOpenAi = !momoOnlyCatalog && shouldIncludeAccountBoundNativeOpenAi(config);
   // Both user levers. Passing only the cap here is what let a per-model window the dashboard
   // had accepted get written back at full width in the on-disk catalog.
   const openaiContextCap = nativeContextLimits(config);
@@ -1599,7 +1606,7 @@ function writeRetainedCatalogSync({
     openaiContextCap,
     policy: {
       ...CANONICAL_NATIVE_CATALOG_CONTENT_POLICY,
-      nativeBackfillSlugs: [...availableBareNativeSlugs, ...observedNativeSlugs],
+      nativeBackfillSlugs: momoOnlyCatalog ? [] : [...availableBareNativeSlugs, ...observedNativeSlugs],
       warningPolicy: "emit",
     },
   });
