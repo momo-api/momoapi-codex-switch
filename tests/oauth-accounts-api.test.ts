@@ -16,6 +16,8 @@ import { handleOauthAccountRoutes } from "../src/server/management/oauth-account
 
 let testDir = "";
 let previousHome: string | undefined;
+let previousAntigravityClientId: string | undefined;
+let previousAntigravityClientSecret: string | undefined;
 let isolatedCodexHome: IsolatedCodexHome | null = null;
 const originalFetch = globalThis.fetch;
 
@@ -47,9 +49,13 @@ function writeAccounts(): void {
 
 beforeEach(() => {
   previousHome = process.env.OPENCODEX_HOME;
+  previousAntigravityClientId = process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID;
+  previousAntigravityClientSecret = process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET;
   isolatedCodexHome = installIsolatedCodexHome("ocx-oauth-accounts-codex-");
   testDir = mkdtempSync(join(tmpdir(), "ocx-oauth-accounts-"));
   process.env.OPENCODEX_HOME = testDir;
+  process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID = "test-antigravity-client-id";
+  process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET = "test-antigravity-client-secret";
   saveConfig(baseConfig());
   writeAccounts();
 });
@@ -59,6 +65,10 @@ afterEach(() => {
   clearModelCache("google-antigravity");
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
+  if (previousAntigravityClientId === undefined) delete process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID;
+  else process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID = previousAntigravityClientId;
+  if (previousAntigravityClientSecret === undefined) delete process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET;
+  else process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET = previousAntigravityClientSecret;
   isolatedCodexHome?.restore();
   isolatedCodexHome = null;
   if (testDir) rmSync(testDir, { recursive: true, force: true });

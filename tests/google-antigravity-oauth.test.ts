@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { discoverAntigravityProject, refreshAntigravityToken } from "../src/oauth/google-antigravity";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,21 @@ import { getCredential, saveCredential } from "../src/oauth/store";
 import { ANTIGRAVITY_IDE_VERSION } from "../src/adapters/client-fingerprint";
 
 const realFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = realFetch; });
+const realClientId = process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID;
+const realClientSecret = process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET;
+
+beforeEach(() => {
+  process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID = "test-antigravity-client-id";
+  process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET = "test-antigravity-client-secret";
+});
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+  if (realClientId === undefined) delete process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID;
+  else process.env.GOOGLE_ANTIGRAVITY_CLIENT_ID = realClientId;
+  if (realClientSecret === undefined) delete process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET;
+  else process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET = realClientSecret;
+});
 
 function routeFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>): { calls: string[] } {
   const calls: string[] = [];

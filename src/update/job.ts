@@ -771,7 +771,7 @@ const NPM_FIELD_VALIDATORS: Record<string, (value: string) => string | null> = {
   //
   // Two narrowing attempts failed here and the second is the instructive one. Extracting any
   // `name@version` also matched `jane.doe@example.com`. Pinning the NAME to our own package
-  // still left the VERSION free: `@bitkyc08/opencodex@99.99.99-JaneDoe` is a valid-looking
+  // still left the VERSION free: `@momo-api/momoapi-codex-switch@99.99.99-JaneDoe` is a valid-looking
   // spec, and a semver prerelease identifier can encode anything — the same lesson the
   // `/healthz` version taught in round 13.
   //
@@ -1397,7 +1397,7 @@ function restartFailureHint(port: number): string {
   return `Update installed, but the restarted proxy did not stay healthy on port ${port}. `
     + `Try 'ocx start --port ${port}'. `
     + "If the update log shows bun postinstall or EPERM warnings, "
-    + "reinstall with 'npm install -g --allow-scripts=bun @bitkyc08/opencodex'.";
+    + "reinstall with 'npm install -g --allow-scripts=bun @momo-api/momoapi-codex-switch'.";
 }
 
 type AwaitHealthyResult =

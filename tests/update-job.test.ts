@@ -396,11 +396,11 @@ describe("GUI update execution decisions", () => {
 
     // No package spec is echoed at all. `name@version` matches an email address; pinning the
     // name to our own package still left the VERSION free, and a semver prerelease identifier
-    // can encode anything (`@bitkyc08/opencodex@99.99.99-JaneDoe`). `code: ETARGET` plus the
+    // can encode anything (`@momo-api/momoapi-codex-switch@99.99.99-JaneDoe`). `code: ETARGET` plus the
     // bare fact is the diagnostic that matters.
     for (const line of [
       "npm error notarget No matching version found for jane.doe@example.com",
-      "npm error notarget No matching version found for @bitkyc08/opencodex@99.99.99-JaneDoe",
+      "npm error notarget No matching version found for @momo-api/momoapi-codex-switch@99.99.99-JaneDoe",
     ]) {
       const out = summarizeCommandOutput("", line, 1, null);
       expect(out).toContain("no matching version");
@@ -1465,7 +1465,7 @@ describe("GUI update execution decisions", () => {
       channel: "latest",
       installer: "bun",
       restart: true,
-      command: "bun add -g @bitkyc08/opencodex@2.7.41",
+      command: "bun add -g @momo-api/momoapi-codex-switch@2.7.41",
       releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
       log: [],
       pid: 777,
@@ -1483,7 +1483,7 @@ describe("GUI update execution decisions", () => {
         installer: "bun",
         updateAvailable: true,
         canUpdate: true,
-        command: "bun add -g @bitkyc08/opencodex@2.7.41",
+        command: "bun add -g @momo-api/momoapi-codex-switch@2.7.41",
         releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
       }),
       spawnWorkerFn: () => ({
@@ -1508,7 +1508,7 @@ describe("GUI update execution decisions", () => {
         installer: "bun",
         updateAvailable: true,
         canUpdate: true,
-        command: "bun add -g @bitkyc08/opencodex@2.7.41",
+        command: "bun add -g @momo-api/momoapi-codex-switch@2.7.41",
         releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
       }),
       spawnWorkerFn: () => { throw new Error("spawn denied"); },
@@ -1525,18 +1525,18 @@ describe("GUI update execution decisions", () => {
 
 describe("immutable update target (WP160)", () => {
   test("a resolved version pins the install target instead of the movable tag", () => {
-    expect(updateCommand("bun", "latest", "2.7.24").args).toEqual(["add", "-g", "@bitkyc08/opencodex@2.7.24"]);
-    expect(updateCommand("npm", "latest", "2.7.24").args).toEqual(["install", "-g", "@bitkyc08/opencodex@2.7.24"]);
-    expect(updateCommandStr("bun", "latest", "2.7.24")).toContain("@bitkyc08/opencodex@2.7.24");
+    expect(updateCommand("bun", "latest", "2.7.24").args).toEqual(["add", "-g", "@momo-api/momoapi-codex-switch@2.7.24"]);
+    expect(updateCommand("npm", "latest", "2.7.24").args).toEqual(["install", "-g", "@momo-api/momoapi-codex-switch@2.7.24"]);
+    expect(updateCommandStr("bun", "latest", "2.7.24")).toContain("@momo-api/momoapi-codex-switch@2.7.24");
     // Unknown version falls back to the tag (best-effort lane).
-    expect(updateCommand("bun", "latest").args).toEqual(["add", "-g", "@bitkyc08/opencodex@latest"]);
-    expect(updateCommand("bun", "latest", null).args).toEqual(["add", "-g", "@bitkyc08/opencodex@latest"]);
+    expect(updateCommand("bun", "latest").args).toEqual(["add", "-g", "@momo-api/momoapi-codex-switch@latest"]);
+    expect(updateCommand("bun", "latest", null).args).toEqual(["add", "-g", "@momo-api/momoapi-codex-switch@latest"]);
   });
 
   test("bun worker execution pins the resolved version through updateExecutionCommand", () => {
     const cmd = updateExecutionCommand("bun", "latest", "/pkg/bin/ocx.mjs", "2.7.24");
     expect(cmd.bin).toBe(process.platform === "win32" ? process.execPath : "bun");
-    expect(cmd.args).toEqual(["add", "-g", "@bitkyc08/opencodex@2.7.24"]);
+    expect(cmd.args).toEqual(["add", "-g", "@momo-api/momoapi-codex-switch@2.7.24"]);
     expect(cmd.display).toContain("@2.7.24");
   });
 

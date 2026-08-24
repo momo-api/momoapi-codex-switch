@@ -175,7 +175,10 @@ async function tryCcaImageGeneration(
     // threading signal through the entire chain, race the whole call against
     // linkedSignal: when the signal aborts we stop awaiting and surface the
     // cancellation immediately instead of hanging on the refresh HTTP call.
-    token = await abortableRace(getValidAccessToken("google-antigravity"), linkedSignal.signal);
+    token = await abortableRace(
+      Promise.resolve().then(() => getValidAccessToken("google-antigravity")),
+      linkedSignal.signal,
+    );
   } catch (err) {
     linkedSignal.cleanup();
     // abortableRace rejects immediately when the signal fires, so client

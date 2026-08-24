@@ -26,7 +26,7 @@ export function historyRestoreIncomplete(configDir = getConfigDir()): boolean {
   }
 }
 
-export const PKG = "@bitkyc08/opencodex";
+export const PKG = "@momo-api/momoapi-codex-switch";
 const HERE = dirname(fileURLToPath(import.meta.url)); // .../opencodex/src/update
 
 export type Installer = "bun" | "npm" | "source";

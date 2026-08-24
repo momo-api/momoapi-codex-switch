@@ -312,6 +312,15 @@ describe("GitHub Actions hardening", () => {
       expect(`checkout[${index}]:${step.with?.["persist-credentials"]}`).toBe(`checkout[${index}]:false`);
     }
 
+    // npm pack names scoped packages as <scope>-<name>-<version>.tgz. The
+    // global-install smoke must install the file npm actually packed instead
+    // of a stale pre-fork tarball glob.
+    const npmGlobalSteps = (ci.jobs?.["npm-global-smoke"] as { steps?: { name?: string; run?: string }[] })?.steps ?? [];
+    const globalInstallRun = npmGlobalSteps.find(step => step.name === "Install globally (downloads bundled bun)")?.run ?? "";
+    expect(globalInstallRun).toContain("require('./pack.json')[0].filename");
+    expect(globalInstallRun).toContain('npm install -g "./${package_file}"');
+    expect(globalInstallRun).not.toContain("bitkyc08-opencodex-*.tgz");
+
     // The self-hosted workspace wipe must not swallow its own failure. A clean
     // that fails on permissions leaves deleted files on disk, and the checkout
     // after it then validates a tree that no longer exists in git.
@@ -4749,17 +4758,8 @@ describe("GitHub Actions hardening", () => {
     expect(gateWriteIndex).toBeLessThan(draftCallIndex);
   });
 
-  test("docs deployment is pinned, bounded, and scoped to Pages", async () => {
-    const workflow = await readText(".github/workflows/deploy-docs.yml");
-
-    expect(workflow).toContain("permissions:\n  contents: read\n  pages: write\n  id-token: write");
-    expect(workflow).toContain("cancel-in-progress: false");
-    expect(workflow).toContain("timeout-minutes: 15");
-    expect(workflow).toContain("timeout-minutes: 10");
-    expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
-    expect(workflow).toContain("withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853");
-    expect(workflow).toContain("actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128");
-    expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
+  test("docs deployment workflow stays removed until Pages is deliberately re-enabled", async () => {
+    expect(await Bun.file(new URL(".github/workflows/deploy-docs.yml", root)).exists()).toBe(false);
   });
 
   test("issue-quality workflow rejects workflow_dispatch pull request numbers before mutation", async () => {

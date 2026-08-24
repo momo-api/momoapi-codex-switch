@@ -12,7 +12,7 @@ import {
   verifyInstallTree,
 } from "../src/update/transactional-install.mjs";
 
-const PKG = "@bitkyc08/opencodex";
+const PKG = "@momo-api/momoapi-codex-switch";
 
 function writeTree(packageDir: string, version: string): void {
   mkdirSync(join(packageDir, "bin"), { recursive: true });

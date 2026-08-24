@@ -408,7 +408,7 @@ describe("combo management API", () => {
         combos: { free: { ...VALID_COMBO, alias: "deepseek-v4-flash" } },
       });
       saveConfig(config);
-      for (const alias of ["combo/shadow", "gpt-5", "deepseek-v4-flash"]) {
+      for (const alias of ["combo/shadow", "gpt-5.5", "deepseek-v4-flash"]) {
         const beforeMemory = structuredClone(config);
         const beforeDisk = readFileSync(getConfigPath(), "utf8");
         const response = await comboApi(config, "PUT", "/api/combos", {
