@@ -45,6 +45,10 @@ curl -fsSL https://momoapi.us/install/momoapi-codex-switch.sh | bash
 - 不自动下载官方 Codex CLI。仅在明确需要命令行版且本机未安装时，Windows 使用 `-InstallCodexCli`，macOS/Linux/WSL 在命令后追加 `--install-codex-cli`。
 - 本地代理通过 Windows Task Scheduler、macOS launchd 或 Linux systemd 用户服务随用户登录自动启动。Linux/WSL 没有 systemd 时，安装会明确提示启用它，不会伪装成可跨重启的临时进程。
 
+## Source development
+
+Source development requires the `bun` CLI on your `PATH`. This is separate from the published npm package's bundled Bun runtime, which is used only by installed `ocx` commands.
+
 ## 支持
 
 问题反馈请提交至 [MOMO API Issues](https://github.com/momo-api/momoapi-codex-switch/issues)。
