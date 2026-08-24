@@ -20,6 +20,10 @@ function parsed(userText: string, withTools = true): OcxParsedRequest {
   };
 }
 
+function messagesWithoutTimestamps(request: OcxParsedRequest): string {
+  return JSON.stringify(request.context.messages, (_key, value) => _key === "timestamp" ? undefined : value);
+}
+
 describe("terminal guard", () => {
   test("recognizes an actionable no-tool completion as suspicious", () => {
     const analysis = analyzeTerminalTurn(parsed("请检查这个问题并修复代码"), [
@@ -212,8 +216,8 @@ describe("terminal guard", () => {
     // The guard must not let liveness markers change what the continuation decides or sends.
     expect(analyzeTerminalTurn(request, padded).assistantText)
       .toBe(analyzeTerminalTurn(request, clean).assistantText);
-    expect(JSON.stringify(buildContinuationRequest(request, padded).context.messages))
-      .toBe(JSON.stringify(buildContinuationRequest(request, clean).context.messages));
+    expect(messagesWithoutTimestamps(buildContinuationRequest(request, padded)))
+      .toBe(messagesWithoutTimestamps(buildContinuationRequest(request, clean)));
   });
 
   // The rebuild used to read the clock twice — once for the assistant message, once for the
