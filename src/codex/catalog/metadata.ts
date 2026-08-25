@@ -36,7 +36,7 @@ import upstreamModelsSnapshot from "../data/upstream-models.json";
 import type { RawEntry } from "./parsing";
 import { readCurrentCatalogOrCache, readCurrentCodexCatalog, readCurrentCodexModelsCache, unique } from "./bundled";
 import { trustedAccountBoundNativeCatalogSlug, visibleCodexAccountSelectors } from "./account-models";
-import { CODEX_NATIVE_ALIAS_CATALOG_KIND } from "./kinds";
+import { CODEX_CUSTOM_MODEL_CATALOG_KIND, CODEX_NATIVE_ALIAS_CATALOG_KIND, CODEX_PROVIDER_MODEL_CATALOG_KIND } from "./kinds";
 import {
   ACCOUNT_GATED_NATIVE_OPENAI_MODELS,
   NATIVE_DAYBREAK_BLUE_MODEL,
@@ -419,7 +419,9 @@ export function applyNativeVisibility(
   observedNativeSlugs: ReadonlySet<string> = new Set(),
 ): RawEntry[] {
   for (const entry of entries) {
-    if (isNativeAliasCatalogEntry(entry)) continue;
+    if (isNativeAliasCatalogEntry(entry)
+      || entry.opencodex_catalog_kind === CODEX_CUSTOM_MODEL_CATALOG_KIND
+      || entry.opencodex_catalog_kind === CODEX_PROVIDER_MODEL_CATALOG_KIND) continue;
     const slug = typeof entry.slug === "string" ? entry.slug : "";
     const accountBoundSlug = trustedAccountBoundNativeCatalogSlug(entry);
     const nativeSlug = accountBoundSlug ?? slug;

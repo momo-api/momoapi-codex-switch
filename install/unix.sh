@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 MOMO_PACKAGE_MANIFEST_URL="https://momoapi.us/install/latest.json"
 GITHUB_RELEASE_API="https://api.github.com/repos/momo-api/momoapi-codex-switch/releases/latest"
-FALLBACK_PACKAGE_URL="https://momoapi.us/install/packages/momoapi-codex-switch-2.29.15.tgz"
-FALLBACK_PACKAGE_SHA256="81bc1db9250c2131dcbf6c34bcc48db7b32b8c96f2bff161756ef3b4a84a61d8"
+FALLBACK_PACKAGE_URL="https://momoapi.us/install/packages/momo-api-momoapi-codex-switch-2.29.17.tgz"
+FALLBACK_PACKAGE_SHA256="e6a30b454fe432b63312428c0ec3514db6cfe0de60ae776a4a3951e5e29304c3"
 NPM_REGISTRY="${MOMO_NPM_REGISTRY:-https://registry.npmmirror.com}"
 API_BASE_URL="https://momoapi.us/v1"
 NPM_PREFIX="${MOMO_NPM_PREFIX:-$HOME/.local}"

@@ -11,8 +11,8 @@ $ProgressPreference = "SilentlyContinue"
 
 $MomoPackageManifestUrl = "https://momoapi.us/install/latest.json"
 $GitHubLatestReleaseApi = "https://api.github.com/repos/momo-api/momoapi-codex-switch/releases/latest"
-$FallbackPackageReleaseUrl = "https://momoapi.us/install/packages/momoapi-codex-switch-2.29.15.tgz"
-$FallbackPackageSha256 = "81bc1db9250c2131dcbf6c34bcc48db7b32b8c96f2bff161756ef3b4a84a61d8"
+$FallbackPackageReleaseUrl = "https://momoapi.us/install/packages/momo-api-momoapi-codex-switch-2.29.17.tgz"
+$FallbackPackageSha256 = "e6a30b454fe432b63312428c0ec3514db6cfe0de60ae776a4a3951e5e29304c3"
 $NpmRegistry = if ($env:MOMO_NPM_REGISTRY) { $env:MOMO_NPM_REGISTRY.TrimEnd("/") } else { "https://registry.npmmirror.com" }
 $ApiBaseUrl = "https://momoapi.us/v1"
 

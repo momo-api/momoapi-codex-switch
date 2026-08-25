@@ -33,7 +33,8 @@ import upstreamModelsSnapshot from "../data/upstream-models.json";
 
 import { NATIVE_OPENAI_CONTEXT_OVERRIDES, SUPPORTED_NATIVE_OPENAI_SLUGS, UPSTREAM_NATIVE_ENTRIES, isNativeOpenAiCapabilityAliasModel, nativeMultiAgentVersion, nativeOpenAiContextWindow, nativeOpenAiMaxInputTokens, type NativeContextLimitsInput } from "./metadata";
 import { trustedAccountBoundNativeCatalogSlug } from "./account-models";
-import { CODEX_NATIVE_ALIAS_CATALOG_KIND } from "./kinds";
+import { CODEX_CUSTOM_MODEL_CATALOG_KIND, CODEX_NATIVE_ALIAS_CATALOG_KIND, CODEX_PROVIDER_MODEL_CATALOG_KIND } from "./kinds";
+export { CODEX_CUSTOM_MODEL_CATALOG_KIND, CODEX_PROVIDER_MODEL_CATALOG_KIND } from "./kinds";
 
 export function legacyCatalogBackupPath(): string {
   return join(getConfigDir(), "catalog-backup.json");
@@ -86,15 +87,10 @@ export function isDefaultCatalogPath(path: string): boolean {
   return samePath(path, activeDefaultCatalogPath());
 }
 
-/** Stable nonsemantic ownership marker for rows projected from config.customModels. */
-export const CODEX_CUSTOM_MODEL_CATALOG_KIND = "custom-model-v1";
-/** A formerly ambiguous slug was authoritatively observed as an ordinary provider row. */
-export const CODEX_PROVIDER_MODEL_CATALOG_KIND = "provider-model-v1";
-
 export interface CatalogModel {
   id: string;
   provider: string;
-  /** Public Codex-facing slug override (used by combo aliases). */
+  /** Public Codex-facing slug override (used by combos and provider projections). */
   alias?: string;
   /** Explicit combo takeover of a bare OpenAI-native catalog id. */
   nativeAlias?: boolean;
@@ -414,6 +410,7 @@ export function catalogEntryIsNativeChatGpt(entry: RawEntry): boolean {
   if (entry.opencodex_catalog_kind === CODEX_NATIVE_ALIAS_CATALOG_KIND) {
     return entry.use_responses_lite === true;
   }
+  if (entry.opencodex_catalog_kind === CODEX_PROVIDER_MODEL_CATALOG_KIND) return false;
   if (trustedAccountBoundNativeCatalogSlug(entry)) return true;
   const routedNativeSlug = slug.startsWith(`${OPENAI_CODEX_PROVIDER_ID}/`)
     ? slug.slice(OPENAI_CODEX_PROVIDER_ID.length + 1)
@@ -603,7 +600,11 @@ export function catalogModelSlug(model: CatalogModel): string {
 
 export function filterSupportedNativeSlugs(models: RawEntry[]): string[] {
   return models
-    .filter(m => typeof m.slug === "string" && !(m.slug as string).includes("/") && m.visibility === "list" && SUPPORTED_NATIVE_OPENAI_SLUGS.has(m.slug as string))
+    .filter(m => typeof m.slug === "string"
+      && !(m.slug as string).includes("/")
+      && m.opencodex_catalog_kind !== CODEX_PROVIDER_MODEL_CATALOG_KIND
+      && m.visibility === "list"
+      && SUPPORTED_NATIVE_OPENAI_SLUGS.has(m.slug as string))
     .map(m => m.slug as string);
 }
 
@@ -614,7 +615,10 @@ export function readCatalogBackup(catalogPath: string): RawCatalog | null {
 
 export function catalogHasRoutedEntries(catalog: RawCatalog | null): boolean {
   return (catalog?.models ?? []).some(m => typeof m.slug === "string"
-    && (m.slug.includes("/") || m.opencodex_catalog_kind === CODEX_NATIVE_ALIAS_CATALOG_KIND));
+    && (m.slug.includes("/")
+      || m.opencodex_catalog_kind === CODEX_NATIVE_ALIAS_CATALOG_KIND
+      || m.opencodex_catalog_kind === CODEX_CUSTOM_MODEL_CATALOG_KIND
+      || m.opencodex_catalog_kind === CODEX_PROVIDER_MODEL_CATALOG_KIND));
 }
 
 export function writePristineCatalogBackup(backupPath: string, catalogPath: string, catalog: RawCatalog): void {
