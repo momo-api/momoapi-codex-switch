@@ -1,9 +1,9 @@
-import { isMediaGenerationModelId } from "../codex/catalog/parsing";
 import { SUPPORTED_NATIVE_OPENAI_SLUGS } from "../codex/catalog/native-models";
 import { syncModelsToCodex } from "../codex/sync";
 import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
 import { routedSlug } from "../providers/slug-codec";
 import type { OcxComboConfig, OcxConfig, OcxMomoModelAutoSyncConfig } from "../types";
+import { isLegacyMomoModelAliasCombo, isMomoImageModelId } from "./catalog-policy";
 
 export const MOMO_RESPONSES_PROVIDER_ID = "momo-responses";
 export const MOMO_CLAUDE_PROVIDER_ID = "momo-claude";
@@ -67,11 +67,14 @@ function effectiveAutoSyncConfig(config: Pick<OcxConfig, "momoModelAutoSync">): 
   const interval = typeof raw.intervalMinutes === "number" && Number.isFinite(raw.intervalMinutes)
     ? Math.floor(raw.intervalMinutes)
     : MOMO_DEFAULT_AUTO_SYNC_INTERVAL_MINUTES;
+  const catalogMode = raw.catalogMode ?? "momo";
   return {
     enabled: raw.enabled === true,
-    catalogMode: raw.catalogMode ?? "momo",
+    catalogMode,
     intervalMinutes: Math.min(24 * 60, Math.max(1, interval)),
-    autoCreateCombos: raw.autoCreateCombos !== false,
+    // MOMO-only exposes provider rows directly under bare ids. The legacy one-target
+    // Combo projection remains available only to an explicitly mixed catalog.
+    autoCreateCombos: catalogMode === "mixed" && raw.autoCreateCombos === true,
     autoRefreshCatalog: raw.autoRefreshCatalog !== false,
     includeImageModels: raw.includeImageModels !== false,
     exposeUnknownModels: raw.exposeUnknownModels === true,
@@ -105,7 +108,7 @@ function providerExists(config: Pick<OcxConfig, "providers">, provider: string):
 export function classifyMomoModelId(modelId: string, config: Pick<OcxConfig, "providers">): MomoModelClassification {
   const id = modelId.trim();
   if (!MOMO_MODEL_ID_PATTERN.test(id)) return { kind: "unknown", reason: "unsupported-public-model-id" };
-  if (isMediaGenerationModelId(id)) {
+  if (isMomoImageModelId(id)) {
     return providerExists(config, MOMO_RESPONSES_PROVIDER_ID)
       ? { kind: "image", provider: MOMO_RESPONSES_PROVIDER_ID, reason: "media-generation" }
       : { kind: "unknown", reason: "momo-responses-provider-missing" };
@@ -165,6 +168,31 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
   };
   if (!settings.enabled) return result;
 
+  const legacyManagedFromCombos = new Set<string>();
+  for (const [id, combo] of Object.entries(config.combos ?? {})) {
+    if (!isLegacyMomoModelAliasCombo(id, combo)) continue;
+    const alias = combo.alias!.trim();
+    const target = combo.targets[0]!;
+    legacyManagedFromCombos.add(alias);
+    const combos = { ...(config.combos ?? {}) };
+    delete combos[id];
+    config.combos = combos;
+    const hidden = routedSlug(target.provider, target.model);
+    config.disabledModels = (config.disabledModels ?? []).filter(candidate => candidate !== hidden);
+    result.removedCombos.push({
+      model: alias,
+      provider: target.provider,
+      comboId: id,
+      kind: "text",
+      reason: "migrated-to-direct-provider-alias",
+    });
+    result.changed = true;
+  }
+  if (settings.catalogMode === "momo" && config.momoModelAutoSync?.autoCreateCombos !== false) {
+    config.momoModelAutoSync = { ...(config.momoModelAutoSync ?? {}), autoCreateCombos: false };
+    result.changed = true;
+  }
+
   const comboAliasToId = new Map<string, string>();
   for (const [id, combo] of Object.entries(config.combos ?? {})) {
     if (typeof combo.alias !== "string") continue;
@@ -185,6 +213,14 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
     if (disabledModelSet.has(model)) return false;
     disabledModelSet.add(model);
     disabledModels.push(model);
+    config.disabledModels = disabledModels;
+    return true;
+  };
+  const removeDisabledModel = (model: string): boolean => {
+    if (!disabledModelSet.delete(model)) return false;
+    const next = disabledModels.filter(candidate => candidate !== model);
+    disabledModels.length = 0;
+    disabledModels.push(...next);
     config.disabledModels = disabledModels;
     return true;
   };
@@ -238,6 +274,9 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
       result.addedProviderModels.push({ model, provider: classification.provider, kind: "text" });
       result.changed = true;
     }
+    if (settings.catalogMode === "momo" && removeDisabledModel(routedSlug(classification.provider, model))) {
+      result.changed = true;
+    }
     if (settings.autoCreateCombos) {
       const combos = ensureWritableCombos();
       const existingComboId = comboAliasToId.get(model) ?? null;
@@ -265,14 +304,7 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
   // scheduler. Remove only rows we own, leaving user-created provider models and combos intact.
   const legacyManagedModelIds = settings.managedModelIds.length > 0
     ? settings.managedModelIds
-    : Object.values(config.combos ?? {}).flatMap(combo => {
-      const target = combo.targets?.[0];
-      return typeof combo.alias === "string"
-        && target?.provider?.startsWith("momo-")
-        && target.model === combo.alias
-        ? [combo.alias]
-        : [];
-    });
+    : [...legacyManagedFromCombos];
   for (const model of legacyManagedModelIds) {
     if (currentModelSet.has(model)) continue;
     const classification = classifyMomoModelId(model, config);
@@ -300,6 +332,7 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
 
   config.momoModelAutoSync = {
     ...(config.momoModelAutoSync ?? {}),
+    ...(settings.catalogMode === "momo" ? { autoCreateCombos: false } : {}),
     managedModelIds: uniqueModelIds,
   };
 

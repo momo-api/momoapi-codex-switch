@@ -246,7 +246,7 @@ export interface OcxMomoModelAutoSyncConfig {
   catalogMode?: "momo" | "mixed";
   /** Poll interval in minutes. Default 60; clamped by the runtime to 1..1440. */
   intervalMinutes?: number;
-  /** Create short public combo aliases for newly discovered text models. Default true. */
+  /** Legacy mixed-catalog compatibility only. MOMO-only projects direct provider aliases instead. */
   autoCreateCombos?: boolean;
   /** Refresh the Codex catalog/cache after a changed sync. Default true. */
   autoRefreshCatalog?: boolean;

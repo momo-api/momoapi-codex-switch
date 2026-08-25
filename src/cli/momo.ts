@@ -3,9 +3,10 @@ import { syncModelsToCodex } from "../codex/sync";
 import { routedSlug } from "../providers/slug-codec";
 import { providerConfigSeed } from "../providers/derive";
 import { getProviderRegistryEntry } from "../providers/registry";
+import { isLegacyMomoModelAliasCombo, MOMO_PROVIDER_IDS } from "../momo/catalog-policy";
+import { applyMomoModelAutoSync, fetchMomoModelIds } from "../momo/model-auto-sync";
 import type { OcxComboConfig, OcxProviderConfig } from "../types";
 
-const MOMO_PROVIDER_IDS = ["momo-responses", "momo-claude", "momo-gemini"] as const;
 const LEGACY_LOCAL_NEWAPI_PROVIDER_ID = "local-newapi";
 const LEGACY_LOCAL_NEWAPI_BASE_URLS = new Set([
   "http://127.0.0.1:3000/v1",
@@ -119,60 +120,27 @@ export function removeMomoDesktopCompatibilityAliases(existing: Record<string, O
   return combos;
 }
 
-function momoModelAliasId(model: MomoModelAlias): string {
-  return `momo-model-${model.id.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
-}
-
-/**
- * Publish MOMO models under their real, short ids. A bare GPT id is normally
- * reserved by OpenCodeX for its OpenAI account pool; a nativeAlias combo takes
- * precedence and routes it through the customer's MOMO key instead.
- */
-export function applyMomoCodexModelAliases(existing: Record<string, OcxComboConfig> | undefined): Record<string, OcxComboConfig> {
+/** Remove one-target model aliases created by MOMO Switch 2.29.4-2.29.16. */
+export function removeMomoCodexModelAliases(existing: Record<string, OcxComboConfig> | undefined): Record<string, OcxComboConfig> {
   const combos = removeMomoDesktopCompatibilityAliases(existing);
-  for (const model of MOMO_RETIRED_MODEL_ALIASES) {
-    const id = momoModelAliasId(model);
-    const current = combos[id];
-    const target = current?.targets?.[0];
-    if (current?.alias === model.id
-      && current.targets?.length === 1
-      && target?.provider === model.provider
-      && target?.model === model.id) {
-      delete combos[id];
-    }
-  }
-  for (const model of MOMO_MODEL_ALIASES) {
-    const id = momoModelAliasId(model);
-    const current = combos[id];
-    const expected: OcxComboConfig = {
-      alias: model.id,
-      ...(model.nativeAlias ? { nativeAlias: true } : {}),
-      displayName: model.displayName,
-      targets: [{ provider: model.provider, model: model.id }],
-    };
-    // Preserve a customer's deliberate edit, but repair our own older row.
-    if (!current) {
-      combos[id] = expected;
-      continue;
-    }
-    const target = current.targets?.[0];
-    if (current.alias === model.id
-      && current.targets?.length === 1
-      && target?.provider === model.provider
-      && target?.model === model.id) {
-      combos[id] = { ...current, ...expected };
-    }
+  for (const [id, combo] of Object.entries(combos)) {
+    if (isLegacyMomoModelAliasCombo(id, combo)) delete combos[id];
   }
   return combos;
 }
 
-/** Hide transport-qualified duplicates; the matching bare combo aliases stay visible. */
-export function hideMomoTransportModelIds(existing: string[] | undefined): string[] {
+/** Upgrade cleanup: direct MOMO aliases need the physical provider rows enabled. */
+export function showMomoTransportModelIds(existing: string[] | undefined): string[] {
   const hidden = new Set(existing ?? []);
-  for (const model of MOMO_MODEL_ALIASES) hidden.add(routedSlug(model.provider, model.id));
-  for (const model of MOMO_RETIRED_MODEL_ALIASES) hidden.add(routedSlug(model.provider, model.id));
+  for (const model of MOMO_MODEL_ALIASES) hidden.delete(routedSlug(model.provider, model.id));
+  for (const model of MOMO_RETIRED_MODEL_ALIASES) hidden.delete(routedSlug(model.provider, model.id));
   return [...hidden];
 }
+
+/** @deprecated MOMO provider rows are now projected directly; retained for API compatibility. */
+export const applyMomoCodexModelAliases = removeMomoCodexModelAliases;
+/** @deprecated Direct aliases require transport rows enabled; retained for API compatibility. */
+export const hideMomoTransportModelIds = showMomoTransportModelIds;
 
 function consumeFlag(args: string[], flag: string): boolean {
   const index = args.indexOf(flag);
@@ -240,7 +208,10 @@ export function removeLegacyLocalNewapiMomoProvider(existing: Record<string, Ocx
 
 export async function runMomo(
   rawArgs: string[],
-  dependencies: { findLiveProxy: () => Promise<{ port: number } | null> },
+  dependencies: {
+    findLiveProxy: () => Promise<{ port: number } | null>;
+    fetch?: typeof fetch;
+  },
 ): Promise<number> {
   const args = [...rawArgs];
   const command = args.shift();
@@ -268,8 +239,8 @@ export async function runMomo(
   const config = loadConfig();
   config.providers = removeLegacyLocalNewapiMomoProvider(config.providers);
   Object.assign(config.providers, momoProviderConfigs(apiKey, config.providers));
-  config.combos = applyMomoCodexModelAliases(config.combos);
-  config.disabledModels = hideMomoTransportModelIds(config.disabledModels);
+  config.combos = removeMomoCodexModelAliases(config.combos);
+  config.disabledModels = showMomoTransportModelIds(config.disabledModels);
   // Codex itself sends no MOMO key. Keep that credential in the local Switch
   // and expose a separate loopback-only Responses endpoint for the custom
   // provider injected into Codex config.toml.
@@ -285,11 +256,23 @@ export async function runMomo(
     enabled: config.momoModelAutoSync?.enabled ?? true,
     catalogMode: config.momoModelAutoSync?.catalogMode ?? "momo",
     intervalMinutes: config.momoModelAutoSync?.intervalMinutes ?? 60,
-    autoCreateCombos: config.momoModelAutoSync?.autoCreateCombos ?? true,
+    autoCreateCombos: false,
     autoRefreshCatalog: config.momoModelAutoSync?.autoRefreshCatalog ?? true,
     includeImageModels: config.momoModelAutoSync?.includeImageModels ?? true,
     notifyOnChanges: config.momoModelAutoSync?.notifyOnChanges ?? true,
+    managedModelIds: config.momoModelAutoSync?.managedModelIds ?? MOMO_PROVIDER_IDS.flatMap(
+      providerId => config.providers[providerId]?.models ?? [],
+    ),
   };
+  let fetchedModelCount: number | null = null;
+  try {
+    const liveModelIds = await fetchMomoModelIds(config, { fetch: dependencies.fetch });
+    applyMomoModelAutoSync(config, liveModelIds);
+    fetchedModelCount = liveModelIds.length;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`MOMO live model fetch deferred to the background scheduler: ${message}`);
+  }
   if (setDefault) config.defaultProvider = "momo-responses";
   // Kept only as no-op compatibility flags for installers from 2.29.4-2.29.10.
   // MOMO Switch now always publishes short, real model names instead of three
@@ -305,6 +288,7 @@ export async function runMomo(
     console.log(`Codex local-only endpoint: http://127.0.0.1:${config.unauthenticatedLoopbackListener.port}/v1`);
   }
   console.log("Codex model names: GPT-5.4, GPT-5.5, GPT-5.6, DeepSeek, Claude, Gemini, and Ox.");
+  if (fetchedModelCount !== null) console.log(`MOMO live model roster loaded: ${fetchedModelCount}`);
 
   if (!sync) {
     console.log("Run `ocx sync` to publish the MOMO models to Codex.");

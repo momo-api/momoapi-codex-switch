@@ -1,5 +1,4 @@
 import { describe, expect, mock, test } from "bun:test";
-import { comboConfigIssues } from "../src/combos";
 import {
   applyMomoModelAutoSync,
   classifyMomoModelId,
@@ -39,7 +38,7 @@ function momoConfig(extra: Partial<OcxConfig> = {}): OcxConfig {
     momoModelAutoSync: {
       enabled: true,
       intervalMinutes: 60,
-      autoCreateCombos: true,
+      autoCreateCombos: false,
       autoRefreshCatalog: true,
       includeImageModels: true,
     },
@@ -56,9 +55,10 @@ describe("MOMO model auto-sync", () => {
     expect(classifyMomoModelId("claude-opus-4-8-thinking", config)).toMatchObject({ kind: "text", provider: "momo-claude" });
     expect(classifyMomoModelId("gemini-3.7-flash", config)).toMatchObject({ kind: "text", provider: "momo-gemini" });
     expect(classifyMomoModelId("gpt-image-2-momoapi", config)).toMatchObject({ kind: "image", provider: "momo-responses" });
+    expect(classifyMomoModelId("gemini-3.1-flash-image", config)).toMatchObject({ kind: "image", provider: "momo-responses" });
   });
 
-  test("adds new text models, creates short combos, hides transport slugs, and configures images relay", () => {
+  test("adds new text models directly, keeps Combo empty, and configures images relay", () => {
     const config = momoConfig();
     const result = applyMomoModelAutoSync(config, [
       "gpt-5.5",
@@ -67,6 +67,7 @@ describe("MOMO model auto-sync", () => {
       "claude-opus-4-8-thinking",
       "gemini-3.8-flash",
       "gpt-image-2-momoapi",
+      "gemini-3.1-flash-image",
       "bad/model",
     ]);
 
@@ -82,21 +83,12 @@ describe("MOMO model auto-sync", () => {
     expect(config.providers["momo-claude"]?.models).toContain("claude-opus-4-8-thinking");
     expect(config.providers["momo-gemini"]?.models).toContain("gemini-3.8-flash");
     expect(config.providers["momo-responses"]?.models).not.toContain("gpt-image-2-momoapi");
+    expect(config.providers["momo-gemini"]?.models).not.toContain("gemini-3.1-flash-image");
     expect(config.images?.provider).toBe("momo-responses");
 
-    const lunaCombo = config.combos?.[momoAutoComboId("gpt-5.6-luna-lite")];
-    expect(lunaCombo).toMatchObject({
-      alias: "gpt-5.6-luna-lite",
-      targets: [{ provider: "momo-responses", model: "gpt-5.6-luna-lite" }],
-    });
-    expect(lunaCombo?.nativeAlias).toBeUndefined();
-    expect(comboConfigIssues(momoAutoComboId("gpt-5.6-luna-lite"), lunaCombo, config.providers, { combos: config.combos })).toEqual([]);
-    expect(config.combos?.[momoAutoComboId("codex-auto-review")]?.targets[0]).toEqual({
-      provider: "momo-responses",
-      model: "codex-auto-review",
-    });
-    expect(config.disabledModels).toContain("momo-responses/gpt-5.6-luna-lite");
-    expect(config.disabledModels).toContain("momo-responses/codex-auto-review");
+    expect(config.combos).toBeUndefined();
+    expect(config.disabledModels ?? []).not.toContain("momo-responses/gpt-5.6-luna-lite");
+    expect(config.disabledModels ?? []).not.toContain("momo-responses/codex-auto-review");
     expect(config.combos?.[momoAutoComboId("gpt-image-2-momoapi")]).toBeUndefined();
     expect(result.skipped).toContainEqual({ model: "bad/model", kind: "unknown", reason: "unsupported-public-model-id" });
 
@@ -107,6 +99,7 @@ describe("MOMO model auto-sync", () => {
       "claude-opus-4-8-thinking",
       "gemini-3.8-flash",
       "gpt-image-2-momoapi",
+      "gemini-3.1-flash-image",
     ]);
     expect(again.changed).toBe(false);
     expect(again.addedProviderModels).toEqual([]);
@@ -120,6 +113,29 @@ describe("MOMO model auto-sync", () => {
     expect(config.providers["momo-responses"]?.models).toContain("gpt-5.6-luna-lite");
     expect(config.combos).toBeUndefined();
     expect(config.disabledModels ?? []).not.toContain("momo-responses/gpt-5.6-luna-lite");
+  });
+
+  test("migrates old single-target aliases even when an old config requested auto combos", () => {
+    const config = momoConfig({
+      momoModelAutoSync: { enabled: true, catalogMode: "momo", autoCreateCombos: true },
+      combos: {
+        [momoAutoComboId("gpt-5.5")]: {
+          alias: "gpt-5.5",
+          nativeAlias: true,
+          displayName: "GPT-5.5",
+          targets: [{ provider: "momo-responses", model: "gpt-5.5" }],
+        },
+      },
+      disabledModels: ["momo-responses/gpt-5.5"],
+    });
+    const result = applyMomoModelAutoSync(config, ["gpt-5.5"]);
+    expect(result.removedCombos).toContainEqual(expect.objectContaining({
+      model: "gpt-5.5",
+      reason: "migrated-to-direct-provider-alias",
+    }));
+    expect(config.combos).toEqual({});
+    expect(config.disabledModels).toEqual([]);
+    expect(config.momoModelAutoSync?.autoCreateCombos).toBe(false);
   });
 
   test("retires only models previously managed by the MOMO roster", () => {
@@ -232,12 +248,4 @@ describe("MOMO model auto-sync", () => {
     expect(clearIntervalMock).toHaveBeenCalledWith(intervalHandle as unknown as ReturnType<typeof setInterval>);
   });
 
-  test("known native OpenAI aliases still require nativeAlias", () => {
-    const config = momoConfig();
-    const issues = comboConfigIssues("momo-model-gpt-5-5", {
-      alias: "gpt-5.5",
-      targets: [{ provider: "momo-responses", model: "gpt-5.5" }],
-    }, config.providers);
-    expect(issues.map(issue => issue.message)).toContain("bare aliases for known OpenAI native models require nativeAlias=true");
-  });
 });

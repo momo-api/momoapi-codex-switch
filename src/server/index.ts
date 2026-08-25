@@ -50,6 +50,7 @@ import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup"
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
 import { runModelRenameStartupMigration } from "../providers/model-rename-startup";
 import { startMomoModelAutoSync, type MomoModelAutoSyncHandle } from "../momo/model-auto-sync";
+import { isMomoOnlyCatalog } from "../momo/catalog-policy";
 import { isCanonicalOpenAiForwardProvider, OPENAI_CODEX_PROVIDER_ID } from "../providers/openai-tiers";
 import { providerCodexAccountMode } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
@@ -909,10 +910,17 @@ export function startServer(port?: number, deps: StartServerDeps = {}): Server<W
         }
         let goModels;
         let modelEntitlements;
+        const momoOnlyCatalog = isMomoOnlyCatalog(config);
         try {
           [goModels, modelEntitlements] = await Promise.all([
             fetchAllModels(config),
-            resolveCodexModelEntitlements(config),
+            momoOnlyCatalog
+              ? Promise.resolve({
+                modelsByAccount: new Map<string, ReadonlySet<string>>(),
+                confirmedAccountIds: new Set<string>(),
+                credentialIdentities: new Map<string, string>(),
+              })
+              : resolveCodexModelEntitlements(config),
           ]);
         } catch (error) {
           if (error instanceof CatalogGatherBusyError) {
@@ -925,8 +933,8 @@ export function startServer(port?: number, deps: StartServerDeps = {}): Server<W
         }
         const { accountBoundNativeOpenAiSlugsBySelector, applyNativeVisibility, buildCatalogEntries, configuredNativeAliasSlugs, desktopAllowlistSuppressedNativeSlugs, disabledNativeSlugs, exactComboCatalogSlugs, loadCatalogTemplate, NATIVE_OPENAI_MODELS, nativeContextLimits, nativeOpenAiSlugs, nativeReasoningEfforts, nativeDefaultReasoningEffort, orderForSubagents, filterCatalogVisibleModels, shouldIncludeAccountBoundNativeOpenAi, shouldIncludeNativeOpenAi, uniqueCatalogModelsForRawPublicList, visibleCodexAccountSelectors, visibleNativeSlugs, desktopVisibleNativeSlugs } = await import("../codex/catalog");
         const { ACCOUNT_GATED_NATIVE_OPENAI_MODELS } = await import("../codex/catalog/native-models");
-        const includeNativeOpenAi = shouldIncludeNativeOpenAi(config);
-        const includeAccountBoundNativeOpenAi = shouldIncludeAccountBoundNativeOpenAi(config);
+        const includeNativeOpenAi = !momoOnlyCatalog && shouldIncludeNativeOpenAi(config);
+        const includeAccountBoundNativeOpenAi = !momoOnlyCatalog && shouldIncludeAccountBoundNativeOpenAi(config);
         const bareEligibleAccountIds = providerCodexAccountMode(
           OPENAI_CODEX_PROVIDER_ID,
           config.providers[OPENAI_CODEX_PROVIDER_ID],
