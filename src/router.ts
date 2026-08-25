@@ -43,6 +43,7 @@ import {
 import { getRoutingProfile, resolvePolicyProfileId } from "./routing/profile";
 import { evaluatePolicyProfile, type PolicyRequestEvidence } from "./routing/evaluator";
 import { assemblePolicyCandidateEvidence } from "./routing/compatibility/assemble";
+import { resolveMomoBareModelProvider } from "./momo/catalog-policy";
 
 export class NoEligiblePolicyCandidateError extends Error {
   /** Evaluation trace (with per-candidate exclusions) when nothing qualified. */
@@ -661,6 +662,17 @@ function routeModelInternal(
         "explicit-provider-namespace",
       );
     }
+  }
+
+  const momoBareRoute = resolveMomoBareModelProvider(config, modelId);
+  if (momoBareRoute) {
+    return routeResult(
+      momoBareRoute.providerName,
+      momoBareRoute.provider,
+      modelId,
+      "explicit-provider",
+      "momo-public-alias",
+    );
   }
 
   if (isBareOpenAiFamilyModel(modelId)) {

@@ -70,6 +70,7 @@ import {
 } from "../../providers/model-discovery";
 import upstreamModelsSnapshot from "../data/upstream-models.json";
 import { createAdmissionGate, ResourceAdmissionError, type AdmissionMetrics } from "../../lib/admission";
+import { projectMomoPublicCatalogAliases } from "../../momo/catalog-policy";
 
 
 import { CODEX_CUSTOM_MODEL_CATALOG_KIND, JAWCODE_CATALOG_AUGMENT_PROVIDERS, catalogModelSlug, shouldExposeRoutedModel } from "./parsing";
@@ -1694,11 +1695,14 @@ async function gatherRoutedModelsUncached(
     config,
     capture.openAiApiPolicy,
   );
-  const all = augmentRoutedModelsWithMetadata(apiAugmented, activeProviders.map(provider => provider.name), config.providers, config)
+  const all = projectMomoPublicCatalogAliases(
+    augmentRoutedModelsWithMetadata(apiAugmented, activeProviders.map(provider => provider.name), config.providers, config)
     // Drop image/video generation models (e.g. Grok image/video) by default. Cursor's static catalog
     // intentionally mirrors Cursor's public model table, including Gemini image preview, so the
     // exposure decision goes through shouldExposeRoutedModel (single choke point).
-    .filter(shouldExposeRoutedModel);
+      .filter(shouldExposeRoutedModel),
+    config,
+  );
   const memberByKey = new Map(all.map(model => [`${model.provider}/${model.id}`, model]));
   // [Decision Log]
   // - 목적과 의도: 콤보 타겟에 native OpenAI(Codex login) 모델이 포함될 때 카탈로그에서

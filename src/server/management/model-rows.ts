@@ -25,6 +25,7 @@ import { providerContextCap } from "../../providers/context-cap";
 import { isVisionReasoningEffort } from "../../reasoning-effort";
 import { routedSlug, slugEquals } from "../../providers/slug-codec";
 import type { OcxConfig } from "../../types";
+import { isMomoOnlyCatalog } from "../../momo/catalog-policy";
 import { fetchAllModels } from "./shared";
 
 /**
@@ -49,11 +50,18 @@ export type ManagementModelRow = Partial<CatalogModel> & {
  */
 export async function listManagementModelRows(config: OcxConfig): Promise<ManagementModelRow[]> {
   const models = await fetchAllModels(config);
+  return buildManagementModelRows(config, models);
+}
+
+/** Pure projection used by the management API and regression tests. */
+export function buildManagementModelRows(config: OcxConfig, models: CatalogModel[]): ManagementModelRow[] {
   const disabled = new Set(config.disabledModels ?? []);
   // Native GPT passthrough rows lead (provider "openai", bare-slug namespaced ids): sourced
   // from the static supported set so a disabled model stays listed and re-enableable.
-  const nativeRows = nativeModelRows(config).map(row => ({ ...row, metadataSlug: row.slug }));
-  const accountNativeRows = shouldIncludeAccountBoundNativeOpenAi(config)
+  const momoOnlyCatalog = isMomoOnlyCatalog(config);
+  const nativeRows = (momoOnlyCatalog ? [] : nativeModelRows(config))
+    .map(row => ({ ...row, metadataSlug: row.slug }));
+  const accountNativeRows = !momoOnlyCatalog && shouldIncludeAccountBoundNativeOpenAi(config)
     ? [...accountBoundNativeOpenAiSlugsBySelector(config).entries()].flatMap(([selector, slugs]) =>
       slugs
         .filter(slug => !NATIVE_OPENAI_MODELS.includes(slug))

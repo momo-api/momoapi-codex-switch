@@ -73,6 +73,7 @@ import {
 import { codexRuntimeStatePath } from "../runtime";
 import { accountBoundNativeDisplayName, CODEX_ACCOUNT_BOUND_CATALOG_KIND, trustedAccountBoundNativeCatalogSlug, visibleCodexAccountSelectors } from "./account-models";
 import { ACCOUNT_GATED_NATIVE_OPENAI_MODELS } from "./native-models";
+import { isMomoOnlyCatalog } from "../../momo/catalog-policy";
 
 export const MAX_SPAWN_AGENT_MODEL_OVERRIDES = 5;
 
@@ -697,15 +698,17 @@ export function orderForSubagents(goModels: CatalogModel[], featured?: string[])
  */
 function isOcxAuthoredRoutedEntry(entry: RawEntry): boolean {
   if (isNativeAliasCatalogEntry(entry)) return true;
+  if (entry.opencodex_catalog_kind === CODEX_CUSTOM_MODEL_CATALOG_KIND
+    || entry.opencodex_catalog_kind === CODEX_PROVIDER_MODEL_CATALOG_KIND) return true;
   const desc = typeof entry.description === "string" ? entry.description : "";
-  const slug = typeof entry.slug === "string" ? entry.slug : "";
-  return slug.includes("/") && desc.startsWith("Routed via opencodex → ");
+  return desc.startsWith("Routed via opencodex → ");
 }
 
 function recoverableNativeSlug(entry: RawEntry): string | null {
   const slug = typeof entry.slug === "string" ? entry.slug : "";
   return SUPPORTED_NATIVE_OPENAI_SLUGS.has(slug)
     && !isNativeAliasCatalogEntry(entry)
+    && !isOcxAuthoredRoutedEntry(entry)
     && entry.owned_by !== COMBO_NAMESPACE
     ? slug
     : null;
@@ -927,6 +930,7 @@ export function mergeCatalogEntriesFromObservedState({
     .filter(m => typeof m.slug === "string"
       && !(m.slug as string).includes("/")
       && m.owned_by !== COMBO_NAMESPACE
+      && !isOcxAuthoredRoutedEntry(m)
       && (policy.unsupportedNativeEntries === "preserve"
         || policy.nativeBackfillSlugs.includes(m.slug as string)
         || !isUnsupportedOpenAiNativeSlug(m.slug as string)))
@@ -997,7 +1001,7 @@ export function mergeCatalogEntriesFromObservedState({
   );
   const existingRoutedEntries = catalogModelsForMerge.filter(m =>
     typeof m.slug === "string"
-    && (m.slug.includes("/") || isNativeAliasCatalogEntry(m))
+    && (m.slug.includes("/") || isOcxAuthoredRoutedEntry(m))
     && trustedAccountBoundNativeCatalogSlug(m) === undefined
   );
   const preservedRoutedEntries = existingRoutedEntries.filter(entry => {
@@ -1482,9 +1486,7 @@ function writeRetainedCatalogSync({
   // authoritative for the picker; the static OpenCodex native backfill must not reintroduce
   // product rows such as gpt-5.3-codex-spark when MOMO did not publish them. The general
   // OpenCodex runtime keeps the existing mixed behavior behind catalogMode="mixed".
-  const momoOnlyCatalog = config.momoModelAutoSync?.catalogMode !== "mixed"
-    && config.momoModelAutoSync?.enabled === true
-    && Object.hasOwn(config.providers, "momo-responses");
+  const momoOnlyCatalog = isMomoOnlyCatalog(config);
   const includeNativeOpenAi = !momoOnlyCatalog && shouldIncludeNativeOpenAi(config);
   const includeAccountBoundNativeOpenAi = !momoOnlyCatalog && shouldIncludeAccountBoundNativeOpenAi(config);
   // Both user levers. Passing only the cap here is what let a per-model window the dashboard
