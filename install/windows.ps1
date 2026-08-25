@@ -485,6 +485,10 @@ try {
   & $ocx sync
   if ($LASTEXITCODE -ne 0) { throw "Codex model catalog sync failed." }
 
+  Write-Step "Installing the Windows tray console..."
+  & $ocx tray install
+  if ($LASTEXITCODE -ne 0) { throw "Windows tray installation failed." }
+
   if (-not $SkipCodexShim) {
     Write-Step "Installing the Codex on-demand startup shim..."
     & $ocx codex-shim install

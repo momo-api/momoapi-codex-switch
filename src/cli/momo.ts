@@ -283,6 +283,7 @@ export async function runMomo(
   config.momoModelAutoSync = {
     ...(config.momoModelAutoSync ?? {}),
     enabled: config.momoModelAutoSync?.enabled ?? true,
+    catalogMode: config.momoModelAutoSync?.catalogMode ?? "momo",
     intervalMinutes: config.momoModelAutoSync?.intervalMinutes ?? 60,
     autoCreateCombos: config.momoModelAutoSync?.autoCreateCombos ?? true,
     autoRefreshCatalog: config.momoModelAutoSync?.autoRefreshCatalog ?? true,

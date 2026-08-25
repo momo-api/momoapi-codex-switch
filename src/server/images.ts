@@ -382,7 +382,15 @@ export async function handleImages(
   logCtx: RequestLogContext,
   turnAdmissionLease?: AdmissionLease,
 ): Promise<Response> {
-  const candidates = selectImagesProvider(config);
+  let body: unknown;
+  try {
+    body = await readJsonRequestBody(req);
+  } catch (err) {
+    return decodeRequestErrorResponse(err, "images");
+  }
+  const model = (body as { model?: unknown } | null)?.model;
+  if (typeof model === "string" && model) logCtx.model = model;
+  const candidates = selectImagesProvider(config, typeof model === "string" ? model : undefined);
   if (candidates.error) {
     return formatErrorResponse(400, "invalid_request_error", candidates.error);
   }
@@ -401,14 +409,6 @@ export async function handleImages(
       }
     }
   }
-  let body: unknown;
-  try {
-    body = await readJsonRequestBody(req);
-  } catch (err) {
-    return decodeRequestErrorResponse(err, "images");
-  }
-  const model = (body as { model?: unknown } | null)?.model;
-  if (typeof model === "string" && model) logCtx.model = model;
 
   const canUseOpenAiForward = !skipOpenAiForwardForAdmissionBearer && candidates.forwardCandidates.length > 0;
 

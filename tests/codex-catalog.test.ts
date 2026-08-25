@@ -2425,6 +2425,21 @@ function mergeObservedForTest(
 }
 
 describe("Codex catalog routed normalization", () => {
+  test("MOMO-only catalog does not retain static native product rows", () => {
+    const spark = { ...nativeTemplate(), slug: "gpt-5.3-codex-spark", owned_by: "openai" };
+    const rows = mergeObservedForTest({
+      catalogModels: [spark],
+      routedEntries: [],
+      includeNativeOpenAi: false,
+      policy: {
+        ...CANONICAL_NATIVE_CATALOG_CONTENT_POLICY,
+        nativeBackfillSlugs: [],
+        warningPolicy: "emit",
+      },
+    });
+    expect(rows.some(row => row.slug === "gpt-5.3-codex-spark")).toBe(false);
+  });
+
   test("does not reuse a routed native alias as the native catalog template", () => {
     const routedAlias = {
       ...nativeTemplate(),

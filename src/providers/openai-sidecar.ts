@@ -199,15 +199,26 @@ export function selectOpenAiImagesProvider(config: OcxConfig): OpenAiImagesProvi
 }
 
 /** Resolve an explicit custom Images provider, otherwise preserve the existing OpenAI fallback. */
-export function selectImagesProvider(config: OcxConfig): OpenAiImagesProviderSelection {
+export function selectImagesProvider(config: OcxConfig, requestedModel?: string): OpenAiImagesProviderSelection {
   const configuredProvider = config.images?.provider;
   if (configuredProvider === undefined) return selectOpenAiImagesProvider(config);
+  // MOMO image models use the MOMO /v1/images/generations route, while a native
+  // ChatGPT image request must keep using the native OpenAI sidecar. The request
+  // model is the only reliable discriminator because images.provider is global config.
+  if (configuredProvider === "momo-responses"
+    && typeof requestedModel === "string"
+    && requestedModel.trim()
+    && !config.momoModelAutoSync?.managedModelIds?.includes(requestedModel.trim())) {
+    return selectOpenAiImagesProvider(config);
+  }
   if (typeof configuredProvider !== "string" || !configuredProvider.trim()) {
     return { forwardCandidates: [], error: "images.provider must be a nonblank provider name" };
   }
   const providerName = configuredProvider.trim();
 
-  if (getProviderRegistryEntry(providerName)) {
+  // MOMO is registry-managed for normal text routing, but its OpenAI-compatible
+  // API-key provider also explicitly owns the image relay.
+  if (getProviderRegistryEntry(providerName) && providerName !== "momo-responses") {
     return {
       forwardCandidates: [],
       error: `images.provider "${providerName}" must name a custom provider; omit it to use built-in OpenAI tiers`,
