@@ -4,6 +4,7 @@ import {
   classifyMomoModelId,
   fetchMomoModels,
   momoAutoComboId,
+  readMomoModelsFromPayload,
   runMomoModelAutoSync,
   startMomoModelAutoSync,
 } from "../src/momo/model-auto-sync";
@@ -166,6 +167,39 @@ describe("MOMO model auto-sync", () => {
     expect(config.providers["momo-gemini"]?.modelReasoningEffortMap?.["gemini-3.7-flash"]).toEqual({
       low: "LOW", medium: "MEDIUM", high: "HIGH",
     });
+  });
+
+  test("consumes the live MOMO selector ladder without guessing missing tiers", () => {
+    const models = readMomoModelsFromPayload({
+      data: [
+        {
+          id: "gpt-5.6-sol",
+          reasoning: {
+            state: "supported",
+            efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+            default_effort: "low",
+          },
+        },
+        {
+          id: "gpt-5.6-luna",
+          reasoning: {
+            state: "supported",
+            efforts: ["low", "medium", "high", "xhigh", "max"],
+            default_effort: "medium",
+          },
+        },
+        { id: "gpt-5.6-luna-lite" },
+      ],
+    });
+    const config = momoConfig();
+
+    applyMomoModelAutoSync(config, models);
+
+    expect(config.providers["momo-responses"]?.modelReasoningEfforts?.["gpt-5.6-sol"])
+      .toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(config.providers["momo-responses"]?.modelReasoningEfforts?.["gpt-5.6-luna"])
+      .toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(config.providers["momo-responses"]?.noReasoningModels).toContain("gpt-5.6-luna-lite");
   });
 
   test("retires only models previously managed by the MOMO roster", () => {
