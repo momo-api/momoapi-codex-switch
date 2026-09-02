@@ -194,7 +194,10 @@ recover_batch_file_by_file() {
   return 0
 }
 
-mapfile -d '' -t ALL_TEST_FILES < <(
+ALL_TEST_FILES=()
+while IFS= read -r -d '' path; do
+  ALL_TEST_FILES+=("$path")
+done < <(
   find tests -type f -print0 \
     | LC_ALL=C sort -z
 )
