@@ -191,6 +191,7 @@ describe("GitHub Actions hardening", () => {
     // of scope (for example a docs-site-only PR).
     const macosSteps = (ci.jobs?.["platform-macos"] as { steps?: { run?: string }[] })?.steps ?? [];
     const macosTestRun = macosSteps.find(step => step.run?.includes("run-bun-test-batches.sh 1/1"))?.run ?? "";
+    expect(macosSteps.some(step => step.run === "brew install coreutils")).toBe(true);
     expect(macosTestRun).toContain("BUN_TEST_BATCH_SIZE=8");
     expect(macosTestRun).toContain("BUN_TEST_BATCH_TIMEOUT_SECONDS=180");
     expect(macosTestRun).toContain("run-bun-test-batches.sh 1/1");
