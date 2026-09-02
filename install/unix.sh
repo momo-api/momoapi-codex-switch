@@ -262,7 +262,7 @@ fi
 export MOMO_API_KEY="$api_key"
 export CODEX_HOME
 
-say "Configuring MOMO model routes and verified reasoning capabilities..."
+say "Configuring MOMO model routes and server-advertised reasoning capabilities..."
 "$ocx" momo setup --set-default
 
 say "Starting the local Switch service..."

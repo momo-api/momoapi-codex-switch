@@ -52,22 +52,30 @@ describe("MOMO provider presets", () => {
     expect(providers["momo-claude"]?.headers?.["User-Agent"]).toBe("momoapi-codex-switch");
   });
 
-  test("repairs verified reasoning capabilities without touching unknown models", () => {
+  test("removes legacy guessed reasoning metadata until live MOMO metadata arrives", () => {
     const providers = applyMomoVerifiedReasoningCapabilities({
       "momo-responses": {
         adapter: "openai-responses",
         baseUrl: "https://momoapi.us/v1",
-        noReasoningModels: ["gpt-5.6-terra", "custom-no-reasoning"],
+        noReasoningModels: ["custom-no-reasoning"],
+        modelReasoningEfforts: { "gpt-5.6-terra": ["low", "medium", "high"] },
+        modelDefaultReasoningEfforts: { "gpt-5.6-terra": "medium" },
       },
-      "momo-claude": { adapter: "anthropic", baseUrl: "https://momoapi.us", noReasoningModels: ["claude-opus-4-6-thinking"] },
-      "momo-gemini": { adapter: "google", baseUrl: "https://momoapi.us", noReasoningModels: ["gemini-3.7-flash"] },
+      "momo-claude": { adapter: "anthropic", baseUrl: "https://momoapi.us" },
+      "momo-gemini": {
+        adapter: "google",
+        baseUrl: "https://momoapi.us",
+        modelReasoningEffortMap: { "gemini-3.7-flash": { high: "HIGH" } },
+      },
     });
 
-    expect(providers["momo-responses"]?.noReasoningModels).toEqual(["custom-no-reasoning"]);
-    expect(providers["momo-responses"]?.modelReasoningEfforts?.["gpt-5.6-terra"]).toEqual(["low", "medium", "high"]);
-    expect(providers["momo-responses"]?.modelReasoningEfforts?.["muse-spark-1.2-contributor-free"]).toEqual(["low", "medium", "high"]);
-    expect(providers["momo-claude"]?.noReasoningModels).toEqual([]);
-    expect(providers["momo-gemini"]?.modelReasoningEffortMap?.["gemini-3.7-flash"]).toEqual({ none: "", low: "LOW", medium: "MEDIUM", high: "HIGH" });
+    expect(providers["momo-responses"]?.noReasoningModels).toEqual(expect.arrayContaining([
+      "custom-no-reasoning", "gpt-5.6-terra", "muse-spark-1.2-contributor-free",
+    ]));
+    expect(providers["momo-responses"]?.modelReasoningEfforts?.["gpt-5.6-terra"]).toBeUndefined();
+    expect(providers["momo-responses"]?.modelDefaultReasoningEfforts?.["gpt-5.6-terra"]).toBeUndefined();
+    expect(providers["momo-claude"]?.noReasoningModels).toContain("claude-opus-4-6-thinking");
+    expect(providers["momo-gemini"]?.modelReasoningEffortMap?.["gemini-3.7-flash"]).toBeUndefined();
   });
 
   test("routes DeepSeek through the established Chat tool-replay bridge", async () => {
@@ -271,12 +279,12 @@ describe("MOMO provider presets", () => {
     expect(rows.some(row => row.provider === "momo-claude" && row.namespaced === "claude-opus-4-6-thinking")).toBe(true);
   });
 
-  test("publishes only the current coding catalog and Ox's supported efforts", () => {
+  test("publishes the current coding catalog without static reasoning claims", () => {
     const responses = getProviderRegistryEntry("momo-responses")!;
     const claude = getProviderRegistryEntry("momo-claude")!;
     expect(responses.models).toContain("deepseek-v4-pro");
     expect(responses.models).not.toContain("grok-4.5");
-    expect(responses.modelReasoningEfforts?.["ox-alpha-free"]).toEqual(["low", "high", "max"]);
+    expect(responses.modelReasoningEfforts?.["ox-alpha-free"]).toBeUndefined();
     expect(claude.models).toEqual(["claude-opus-4-6-thinking"]);
   });
 });

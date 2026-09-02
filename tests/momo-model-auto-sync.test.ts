@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import {
   applyMomoModelAutoSync,
   classifyMomoModelId,
+  fetchMomoModels,
   momoAutoComboId,
   runMomoModelAutoSync,
   startMomoModelAutoSync,
@@ -138,6 +139,35 @@ describe("MOMO model auto-sync", () => {
     expect(config.momoModelAutoSync?.autoCreateCombos).toBe(false);
   });
 
+  test("applies server reasoning metadata and fails closed for unknown capability", () => {
+    const config = momoConfig({
+      providers: {
+        ...momoConfig().providers,
+        "momo-responses": {
+          ...momoConfig().providers["momo-responses"],
+          modelReasoningEfforts: { unknown: ["low", "high"] },
+          modelDefaultReasoningEfforts: { unknown: "high" },
+        },
+      },
+    });
+
+    applyMomoModelAutoSync(config, [
+      { id: "gpt-5.6-sol", reasoning: { state: "supported", efforts: ["high", "low", "medium"], defaultEffort: "medium" } },
+      { id: "unsupported", reasoning: { state: "unsupported" } },
+      { id: "unknown", reasoning: { state: "unknown" } },
+      { id: "gemini-3.7-flash", reasoning: { state: "supported", efforts: ["low", "medium", "high"], defaultEffort: "medium" } },
+    ]);
+
+    expect(config.providers["momo-responses"]?.modelReasoningEfforts?.["gpt-5.6-sol"]).toEqual(["low", "medium", "high"]);
+    expect(config.providers["momo-responses"]?.modelDefaultReasoningEfforts?.["gpt-5.6-sol"]).toBe("medium");
+    expect(config.providers["momo-responses"]?.noReasoningModels).toEqual(expect.arrayContaining(["unsupported", "unknown"]));
+    expect(config.providers["momo-responses"]?.modelReasoningEfforts?.unknown).toBeUndefined();
+    expect(config.providers["momo-responses"]?.modelDefaultReasoningEfforts?.unknown).toBeUndefined();
+    expect(config.providers["momo-gemini"]?.modelReasoningEffortMap?.["gemini-3.7-flash"]).toEqual({
+      low: "LOW", medium: "MEDIUM", high: "HIGH",
+    });
+  });
+
   test("retires only models previously managed by the MOMO roster", () => {
     const config = momoConfig({
       momoModelAutoSync: {
@@ -200,6 +230,27 @@ describe("MOMO model auto-sync", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(saveConfig).toHaveBeenCalledTimes(1);
     expect(refreshCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses /agent/catalog first and falls back to /v1/models when unavailable", async () => {
+    const config = momoConfig();
+    const fetch = mock(async (input: string | URL) => {
+      if (String(input).endsWith("/agent/catalog")) return new Response("portal html", { status: 200 });
+      return Response.json({
+        data: [{
+          id: "gpt-5.6-sol",
+          supports_reasoning_effort: true,
+          reasoning_efforts: ["low", "medium", "high"],
+          default_reasoning_effort: "medium",
+        }],
+      });
+    });
+
+    await expect(fetchMomoModels(config, { fetch })).resolves.toEqual([{
+      id: "gpt-5.6-sol",
+      reasoning: { state: "supported", efforts: ["low", "medium", "high"], defaultEffort: "medium" },
+    }]);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   test("disabled auto-sync does not fetch or mutate", async () => {

@@ -2,6 +2,7 @@ import { SUPPORTED_NATIVE_OPENAI_SLUGS } from "../codex/catalog/native-models";
 import { syncModelsToCodex } from "../codex/sync";
 import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
 import { routedSlug } from "../providers/slug-codec";
+import { canonicalizeReasoningEfforts } from "../reasoning-effort";
 import type { OcxComboConfig, OcxConfig, OcxMomoModelAutoSyncConfig } from "../types";
 import { isLegacyMomoModelAliasCombo, isMomoImageModelId } from "./catalog-policy";
 
@@ -11,8 +12,29 @@ export const MOMO_GEMINI_PROVIDER_ID = "momo-gemini";
 export const MOMO_DEFAULT_AUTO_SYNC_INTERVAL_MINUTES = 60;
 
 const MOMO_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const MOMO_GEMINI_REASONING_EFFORT_MAP: Readonly<Record<string, string>> = {
+  none: "",
+  minimal: "LOW",
+  low: "LOW",
+  medium: "MEDIUM",
+  high: "HIGH",
+  xhigh: "HIGH",
+  max: "HIGH",
+};
 
 export type MomoModelKind = "text" | "image" | "unknown";
+export type MomoReasoningState = "supported" | "unsupported" | "unknown";
+
+export interface MomoModelReasoning {
+  state: MomoReasoningState;
+  efforts?: string[];
+  defaultEffort?: string;
+}
+
+export interface MomoModelDescriptor {
+  id: string;
+  reasoning?: MomoModelReasoning;
+}
 
 export interface MomoModelClassification {
   kind: MomoModelKind;
@@ -153,12 +175,12 @@ function isManagedCombo(combo: OcxComboConfig | undefined, provider: string, mod
     && combo.targets[0]?.model === model);
 }
 
-export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly string[]): MomoAutoSyncResult {
+export function applyMomoModelAutoSync(config: OcxConfig, models: readonly (string | MomoModelDescriptor)[]): MomoAutoSyncResult {
   const settings = effectiveAutoSyncConfig(config);
   const result: MomoAutoSyncResult = {
     enabled: settings.enabled,
     changed: false,
-    fetched: modelIds.length,
+    fetched: models.length,
     addedProviderModels: [],
     removedProviderModels: [],
     addedCombos: [],
@@ -232,9 +254,17 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
     return writableCombos;
   };
 
-  const uniqueModelIds = [...new Set(modelIds.map(id => id.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const modelsById = new Map<string, MomoModelDescriptor>();
+  for (const item of models) {
+    const descriptor = typeof item === "string" ? { id: item } : item;
+    const id = descriptor.id.trim();
+    if (!id) continue;
+    modelsById.set(id, { ...descriptor, id });
+  }
+  const uniqueModelIds = [...modelsById.keys()].sort((a, b) => a.localeCompare(b));
   const currentModelSet = new Set(uniqueModelIds);
   for (const model of uniqueModelIds) {
+    const descriptor = modelsById.get(model);
     const classification = classifyMomoModelId(model, config);
     if (classification.kind === "unknown" || !classification.provider) {
       if (settings.exposeUnknownModels && providerExists(config, MOMO_RESPONSES_PROVIDER_ID) && MOMO_MODEL_ID_PATTERN.test(model)) {
@@ -273,6 +303,69 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
       provider.models = providerModels;
       result.addedProviderModels.push({ model, provider: classification.provider, kind: "text" });
       result.changed = true;
+    }
+    const capability = descriptor?.reasoning;
+    if (capability) {
+      const efforts = capability.state === "supported"
+        ? canonicalizeReasoningEfforts(capability.efforts ?? [])
+        : [];
+      const supported = capability.state === "supported" && efforts.length > 0;
+      if (supported) {
+        if (JSON.stringify(provider.modelReasoningEfforts?.[model]) !== JSON.stringify(efforts)) {
+          provider.modelReasoningEfforts = { ...(provider.modelReasoningEfforts ?? {}), [model]: efforts };
+          result.changed = true;
+        }
+        const defaultEffort = capability.defaultEffort;
+        if (defaultEffort && efforts.includes(defaultEffort)) {
+          if (provider.modelDefaultReasoningEfforts?.[model] !== defaultEffort) {
+            provider.modelDefaultReasoningEfforts = { ...(provider.modelDefaultReasoningEfforts ?? {}), [model]: defaultEffort };
+            result.changed = true;
+          }
+        } else if (provider.modelDefaultReasoningEfforts && Object.hasOwn(provider.modelDefaultReasoningEfforts, model)) {
+          const defaults = { ...provider.modelDefaultReasoningEfforts };
+          delete defaults[model];
+          provider.modelDefaultReasoningEfforts = defaults;
+          result.changed = true;
+        }
+        if (provider.noReasoningModels?.includes(model)) {
+          provider.noReasoningModels = provider.noReasoningModels.filter(candidate => candidate !== model);
+          result.changed = true;
+        }
+        if (classification.provider === MOMO_GEMINI_PROVIDER_ID) {
+          const wireMap = Object.fromEntries(efforts.map(effort => [
+            effort,
+            MOMO_GEMINI_REASONING_EFFORT_MAP[effort] ?? "HIGH",
+          ]));
+          if (JSON.stringify(provider.modelReasoningEffortMap?.[model]) !== JSON.stringify(wireMap)) {
+            provider.modelReasoningEffortMap = { ...(provider.modelReasoningEffortMap ?? {}), [model]: wireMap };
+            result.changed = true;
+          }
+        }
+      } else {
+        const noReasoning = addUnique(provider.noReasoningModels, model);
+        if (noReasoning.changed) {
+          provider.noReasoningModels = noReasoning.list;
+          result.changed = true;
+        }
+        if (provider.modelReasoningEfforts && Object.hasOwn(provider.modelReasoningEfforts, model)) {
+          const modelEfforts = { ...provider.modelReasoningEfforts };
+          delete modelEfforts[model];
+          provider.modelReasoningEfforts = modelEfforts;
+          result.changed = true;
+        }
+        if (provider.modelDefaultReasoningEfforts && Object.hasOwn(provider.modelDefaultReasoningEfforts, model)) {
+          const defaults = { ...provider.modelDefaultReasoningEfforts };
+          delete defaults[model];
+          provider.modelDefaultReasoningEfforts = defaults;
+          result.changed = true;
+        }
+        if (provider.modelReasoningEffortMap && Object.hasOwn(provider.modelReasoningEffortMap, model)) {
+          const maps = { ...provider.modelReasoningEffortMap };
+          delete maps[model];
+          provider.modelReasoningEffortMap = maps;
+          result.changed = true;
+        }
+      }
     }
     if (settings.catalogMode === "momo" && removeDisabledModel(routedSlug(classification.provider, model))) {
       result.changed = true;
@@ -313,6 +406,22 @@ export function applyMomoModelAutoSync(config: OcxConfig, modelIds: readonly str
       const provider = config.providers[providerId];
       if (provider?.models?.includes(model)) {
         provider.models = provider.models.filter(candidate => candidate !== model);
+        provider.noReasoningModels = provider.noReasoningModels?.filter(candidate => candidate !== model);
+        if (provider.modelReasoningEfforts && Object.hasOwn(provider.modelReasoningEfforts, model)) {
+          const efforts = { ...provider.modelReasoningEfforts };
+          delete efforts[model];
+          provider.modelReasoningEfforts = efforts;
+        }
+        if (provider.modelDefaultReasoningEfforts && Object.hasOwn(provider.modelDefaultReasoningEfforts, model)) {
+          const defaults = { ...provider.modelDefaultReasoningEfforts };
+          delete defaults[model];
+          provider.modelDefaultReasoningEfforts = defaults;
+        }
+        if (provider.modelReasoningEffortMap && Object.hasOwn(provider.modelReasoningEffortMap, model)) {
+          const maps = { ...provider.modelReasoningEffortMap };
+          delete maps[model];
+          provider.modelReasoningEffortMap = maps;
+        }
         result.removedProviderModels.push({ model, provider: providerId, kind: classification.kind, reason: "momo-model-removed" });
         result.changed = true;
       }
@@ -345,32 +454,73 @@ function readMomoApiKey(config: OcxConfig): string | null {
   return key || null;
 }
 
-function readModelIdsFromModelsPayload(payload: unknown): string[] {
+export function readMomoModelsFromPayload(payload: unknown): MomoModelDescriptor[] {
   if (!payload || typeof payload !== "object" || !Array.isArray((payload as { data?: unknown }).data)) return [];
-  const out: string[] = [];
+  const out: MomoModelDescriptor[] = [];
   for (const item of (payload as { data: unknown[] }).data) {
     if (item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string") {
       const id = (item as { id: string }).id.trim();
-      if (id) out.push(id);
+      if (!id) continue;
+      const record = item as {
+        reasoning?: { state?: unknown; efforts?: unknown; default_effort?: unknown };
+        supports_reasoning_effort?: unknown;
+        reasoning_efforts?: unknown;
+        default_reasoning_effort?: unknown;
+      };
+      const nested = record.reasoning;
+      const state: MomoReasoningState = nested?.state === "supported" || nested?.state === "unsupported"
+        ? nested.state
+        : record.supports_reasoning_effort === true
+          ? "supported"
+          : record.supports_reasoning_effort === false
+            ? "unsupported"
+            : "unknown";
+      const rawEfforts = nested?.efforts ?? record.reasoning_efforts;
+      const efforts = Array.isArray(rawEfforts)
+        ? rawEfforts.filter((effort): effort is string => typeof effort === "string")
+        : undefined;
+      const defaultEffort = nested?.default_effort ?? record.default_reasoning_effort;
+      out.push({
+        id,
+        reasoning: {
+          state,
+          ...(efforts ? { efforts } : {}),
+          ...(typeof defaultEffort === "string" ? { defaultEffort } : {}),
+        },
+      });
     }
   }
   return out;
 }
 
-export async function fetchMomoModelIds(config: OcxConfig, deps: Pick<MomoModelAutoSyncRunDeps, "fetch"> = {}): Promise<string[]> {
+export async function fetchMomoModels(config: OcxConfig, deps: Pick<MomoModelAutoSyncRunDeps, "fetch"> = {}): Promise<MomoModelDescriptor[]> {
   const apiKey = readMomoApiKey(config);
   if (!apiKey) return [];
   const fetchImpl = deps.fetch ?? globalThis.fetch;
-  const response = await fetchImpl("https://momoapi.us/v1/models", {
+  const request: RequestInit = {
     method: "GET",
     headers: { authorization: `Bearer ${apiKey}` },
-  });
+  };
+  try {
+    const catalogResponse = await fetchImpl("https://momoapi.us/agent/catalog", request);
+    if (catalogResponse.ok) {
+      const models = readMomoModelsFromPayload(await catalogResponse.json());
+      if (models.length > 0) return models;
+    }
+  } catch {
+    // Older deployments and SPA fallthroughs do not expose the enriched catalog.
+  }
+  const response = await fetchImpl("https://momoapi.us/v1/models", request);
   if (!response.ok) throw new Error(`MOMO /v1/models returned HTTP ${response.status}`);
-  const modelIds = readModelIdsFromModelsPayload(await response.json());
+  const models = readMomoModelsFromPayload(await response.json());
   // An empty or malformed roster is not positive evidence that every previously managed
   // model was retired. Fail closed so a transient gateway/schema problem cannot erase routing.
-  if (modelIds.length === 0) throw new Error("MOMO /v1/models returned an empty or invalid model roster");
-  return modelIds;
+  if (models.length === 0) throw new Error("MOMO /v1/models returned an empty or invalid model roster");
+  return models;
+}
+
+export async function fetchMomoModelIds(config: OcxConfig, deps: Pick<MomoModelAutoSyncRunDeps, "fetch"> = {}): Promise<string[]> {
+  return (await fetchMomoModels(config, deps)).map(model => model.id);
 }
 
 export async function runMomoModelAutoSync(config: OcxConfig, deps: MomoModelAutoSyncRunDeps = {}): Promise<MomoAutoSyncResult> {
@@ -387,8 +537,8 @@ export async function runMomoModelAutoSync(config: OcxConfig, deps: MomoModelAut
     imagesProviderChanged: false,
   };
   if (!settings.enabled) return disabled;
-  const modelIds = await fetchMomoModelIds(config, deps);
-  const result = applyMomoModelAutoSync(config, modelIds);
+  const models = await fetchMomoModels(config, deps);
+  const result = applyMomoModelAutoSync(config, models);
   if (!result.changed) return result;
 
   (deps.saveConfig ?? saveConfigPreservingClaudeCode)(config);

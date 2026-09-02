@@ -88,6 +88,7 @@ export const PICKER_ORDER_PRIORITY_BASE = 1_000;
 // is invisible to Codex; effectiveSubagentRoster reads it so a display reorder cannot change which
 // rows are spawn_agent candidates. Absent on rows modelPickerOrder did not move.
 export const SPAWN_PRIORITY_FIELD = "opencodex_spawn_priority";
+export const REASONING_AUTHORITY_FIELD = "opencodex_reasoning_efforts_authoritative";
 
 export type SpawnAgentSurface = "v1" | "v2";
 
@@ -336,8 +337,9 @@ export function deriveEntry(
         e,
         model?.reasoningEfforts,
         model?.defaultReasoningEffort,
-        preserveExact || codexForwardNativeCapabilityAlias !== null,
+        preserveExact || codexForwardNativeCapabilityAlias !== null || model?.reasoningEffortsAuthoritative === true,
       );
+      if (model?.reasoningEffortsAuthoritative === true) e[REASONING_AUTHORITY_FIELD] = true;
       // This exact provider/model pair is the ChatGPT/Codex forward surface. Keep the pinned
       // native tool/search/responses-lite contract while preserving the routed slug and wire id.
       if (!codexForwardNativeCapabilityAlias) {
@@ -386,7 +388,13 @@ export function deriveEntry(
   };
   if (isRouted) {
     applyRoutedCodexToolMode(entry, model?.codexToolMode);
-    applyReasoningLevels(entry, model?.reasoningEfforts, model?.defaultReasoningEffort, preserveExact);
+    applyReasoningLevels(
+      entry,
+      model?.reasoningEfforts,
+      model?.defaultReasoningEffort,
+      preserveExact || model?.reasoningEffortsAuthoritative === true,
+    );
+    if (model?.reasoningEffortsAuthoritative === true) entry[REASONING_AUTHORITY_FIELD] = true;
   }
   else {
     applyReasoningLevels(entry, isGpt56NativeSlug(slug) ? undefined : ["low", "medium", "high", "xhigh"]);
@@ -1100,7 +1108,7 @@ export function mergeCatalogEntriesFromObservedState({
     // Mock-max universality (260709): preserved routed entries from disk may predate
     // the max rung — ensure it here so subagent max spawns validate on every
     // reasoning-capable entry. max only: 5.6 exact ladders (luna: no ultra) stay intact.
-    if (!exactCombo) {
+    if (!exactCombo && e[REASONING_AUTHORITY_FIELD] !== true) {
       const levels = Array.isArray(e.supported_reasoning_levels)
         ? e.supported_reasoning_levels as Array<{ effort?: string }>
         : [];
