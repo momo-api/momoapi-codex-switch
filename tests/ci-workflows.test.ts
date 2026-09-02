@@ -186,34 +186,15 @@ describe("GitHub Actions hardening", () => {
     expect(hasExactShellCommand(gatesGuiRun, "cd gui && bun test --isolate tests")).toBe(true);
     expect(hasExactShellCommand(gatesGuiRun, "cd gui && bun test tests")).toBe(false);
 
-    // macOS is the unsharded control for every CI-relevant change. It may skip
-    // only when the shared path filter says the entire expensive suite is out of
-    // scope (for example a docs-site-only PR).
+    // macOS covers the entire general suite in a single batch-runner shard. It
+    // may skip only when the shared path filter says the expensive suite is out
+    // of scope (for example a docs-site-only PR).
     const macosSteps = (ci.jobs?.["platform-macos"] as { steps?: { run?: string }[] })?.steps ?? [];
-    // The 60s per-test ceiling is part of the pinned shape: dropping it silently
-    // restores the timing-flake class this lane kept surfacing.
-    expect(macosSteps.some(step => step.run?.includes("bun test --isolate --timeout 60000 tests"))).toBe(true);
-    expect(macosSteps.some(step => step.run?.includes("--shard"))).toBe(false);
-
-    // The macOS leg retries ONLY a Bun runtime crash, and only once. Bun 1.3.14
-    // segfaults reclaiming a Worker at an `--isolate` file boundary with
-    // balanced worker counts, which is a runtime defect rather than a test
-    // result; the Linux shards already absorb that class in
-    // `scripts/ci/run-bun-test-batches.sh`. Two ways to break this silently:
-    // drop the crash-signature guard so an assertion failure gets retried into
-    // green, or let the retry loop swallow a repeated crash. Pin both.
-    const macosTestRun = macosSteps.find(step => step.run?.includes("bun test --isolate --timeout 60000 tests"))?.run ?? "";
-    // Actions invokes multiline `run:` blocks with `bash -e`. The retry loop
-    // must disable errexit before the crash-prone command or exit 133 aborts
-    // the step before PIPESTATUS can be inspected and the retry can run.
-    expect(hasExactShellCommand(macosTestRun, "set +e")).toBe(true);
-    expect(macosTestRun).toContain("Segmentation fault at address");
-    expect(macosTestRun).toContain("oh no: Bun has crashed");
-    expect(macosTestRun).toContain("assertion failures are not retried");
-    expect(macosTestRun).toContain("failing after one retry");
-    // `for attempt in 1 2` — one retry, never an unbounded loop.
-    expect(macosTestRun).toContain("for attempt in 1 2");
-    expect(macosTestRun).not.toContain("while true");
+    const macosTestRun = macosSteps.find(step => step.run?.includes("run-bun-test-batches.sh 1/1"))?.run ?? "";
+    expect(macosSteps.some(step => step.run === "brew install coreutils")).toBe(true);
+    expect(macosTestRun).toContain("BUN_TEST_BATCH_SIZE=8");
+    expect(macosTestRun).toContain("BUN_TEST_BATCH_TIMEOUT_SECONDS=180");
+    expect(macosTestRun).toContain("run-bun-test-batches.sh 1/1");
     expect((ci.jobs?.["platform-macos"] as { needs?: string; if?: string })?.needs).toBe("changes");
     expect((ci.jobs?.["platform-macos"] as { if?: string })?.if)
       .toBe("github.event_name != 'pull_request' || needs.changes.outputs.ci == 'true'");
@@ -252,7 +233,7 @@ describe("GitHub Actions hardening", () => {
     expect(winSteps.some(step => step.if === "runner.environment == 'self-hosted'"
       && step.run?.includes("git clean -xffd"))).toBe(true);
 
-    // The three crash-signature lists must stay identical, and they must not key on
+    // The Windows retry and shared batch runner crash-signature lists must stay identical, and they must not key on
     // `panic(thread`.
     //
     // Bun emits BOTH `panic(thread 2852)` and `panic(main thread)` for the same class of
@@ -271,12 +252,10 @@ describe("GitHub Actions hardening", () => {
     const windowsTestRun = windowsTestSteps[0]?.run ?? "";
     const batchScript = await readText("scripts/ci/run-bun-test-batches.sh");
     for (const signature of crashSignatures) {
-      expect(`macos:${signature}:${macosTestRun.includes(signature)}`).toBe(`macos:${signature}:true`);
       expect(`windows:${signature}:${windowsTestRun.includes(signature)}`).toBe(`windows:${signature}:true`);
       expect(`script:${signature}:${batchScript.includes(signature)}`).toBe(`script:${signature}:true`);
     }
     // The thread-numbered form must not be the anchor anywhere.
-    expect(macosTestRun).not.toContain("panic\\(thread");
     expect(windowsTestRun).not.toContain("panic\\(thread");
     expect(batchScript).not.toContain("panic\\(thread");
 

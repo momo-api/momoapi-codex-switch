@@ -433,14 +433,11 @@ jobs:
       - name: CLI help smoke
         run: bun run src/cli/index.ts help
 
-  # macOS runs on every pull request, and runs the WHOLE suite unsharded.
+  # macOS runs on every pull request and covers the WHOLE suite.
   #
   # That is the point of it. The four Linux shards each cover a quarter of the
-  # files, which quietly assumes no test depends on a sibling file having run in
-  # the same process pool. This leg is the control that would notice if that
-  # assumption ever broke. It is also the cheapest leg on the board — 5m23s on
-  # the baseline run, faster than the ubuntu leg it sits beside — so there was
-  # never a latency argument for touching it.
+  # files. It uses one shard of the existing batch runner, so every test still
+  # executes on macOS while a wedged Bun process is bounded and isolated.
   #
   # It does not repeat the gates: typecheck, privacy, lint, and build are
   # platform-independent and already ran once above.
@@ -449,10 +446,8 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.ci == 'true'
     runs-on: macos-latest
-    # The unsharded control for the sharded Linux lane: the only place the whole
-    # suite runs in one pool, so it is the place that catches what sharding
-    # hides. The flakes it keeps surfacing are timing, not logic, and the fix
-    # is the tests, not a fourth lane.
+    # One macOS batch lane covers all selected files. Individual batches have a
+    # hard timeout and fall back to singleton isolation on a Bun runtime wedge.
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -468,6 +463,9 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - name: Install GNU coreutils
+        run: brew install coreutils
+
       - name: Install dependencies
         run: |
           bun install --frozen-lockfile
@@ -480,50 +478,11 @@ jobs:
           cd gui
           bun run build
 
-      # Bun 1.3.14 segfaults while reclaiming a Worker at an `--isolate` file
-      # boundary: the header shows BALANCED `workers_spawned(N)
-      # workers_terminated(N)` and the process dies with exit 133 after the last
-      # assertion in the file already passed. It landed on
-      # `storage-worker-lifecycle` and `server-background-lifecycle` — the two
-      # files that tear down a still-busy policy Worker — and accounted for most
-      # of this leg's red runs on `dev` while every failing SHA passed on rerun.
-      #
-      # This is a runtime crash, not a test result, and the Linux shards already
-      # retry exactly this class through `scripts/ci/run-bun-test-batches.sh`
-      # (`is_bun_runtime_crash`). The unsharded macOS control had no equivalent,
-      # so the same crash that Linux absorbs failed the whole promotion here.
-      #
-    # Keep the signature list in sync with `is_bun_runtime_crash` in
-    # scripts/ci/run-bun-test-batches.sh. An assertion failure still fails on
-    # the first attempt — only the crash signature is retried, exactly once.
       - name: Test
         run: |
-          # GitHub Actions starts bash `run:` blocks with `-e`. Disable
-          # errexit so a Bun crash reaches PIPESTATUS and the bounded retry.
-          set +e
-          set -uo pipefail
-          suite_log="$(mktemp -t ocx-macos-suite.XXXXXX)"
-          for attempt in 1 2; do
-            # --timeout: Bun's default 5s per-test ceiling is the recurring flake
-            # class on this loaded shared runner (real retry windows + server
-            # round-trips exceed 5s under contention; a 10s-floor in-test
-            # watchdog fired at 10.16s there). 60s keeps hangs bounded (the 30m
-            # job timeout is the outer backstop) while removing the timing
-            # flakes — assertions are untouched. Pairs with the 30s CI floor in
-            # tests/helpers/ci-watchdog.ts.
-            bun test --isolate --timeout 60000 tests 2>&1 | tee "$suite_log"
-            suite_status="${PIPESTATUS[0]}"
-            if [ "$suite_status" -eq 0 ]; then
-              exit 0
-            fi
-            if ! grep -Eqi 'oh no: Bun has crashed|Internal assertion failure|Segmentation fault at address|Illegal instruction|Bus error|Aborted \(core dumped\)' "$suite_log"; then
-              echo "::error::macOS suite failed on attempt ${attempt} (exit ${suite_status}); assertion failures are not retried."
-              exit "$suite_status"
-            fi
-            echo "::warning::Bun runtime crash in the macOS suite (exit ${suite_status}, attempt ${attempt})."
-          done
-          echo "::error::Bun runtime crash repeated on the macOS suite; failing after one retry."
-          exit 1
+          BUN_TEST_BATCH_SIZE=8 \
+          BUN_TEST_BATCH_TIMEOUT_SECONDS=180 \
+          bash scripts/ci/run-bun-test-batches.sh 1/1
 
       - name: CLI help smoke
         run: bun run src/cli/index.ts help
