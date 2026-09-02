@@ -1539,8 +1539,6 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "deepseek-v4-flash": "openai-chat",
       "deepseek-v4-pro": "openai-chat",
     },
-    modelReasoningEfforts: { "ox-alpha-free": ["low", "high", "max"] },
-    modelDefaultReasoningEfforts: { "ox-alpha-free": "low" },
     note: "MOMO OpenAI models. DeepSeek uses OpenCodeX's Chat tool-replay bridge for Codex compatibility.",
   },
   {
@@ -1555,7 +1553,6 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     models: ["gemini-3.7-flash"],
     modelContextWindows: { "gemini-3.7-flash": 1_048_576 },
     modelInputModalities: { "gemini-3.7-flash": ["text", "image"] },
-    modelReasoningEfforts: { "gemini-3.7-flash": ["minimal", "low", "medium", "high"] },
     note: "MOMO native Gemini wire with Bearer authentication.",
   },
   // 2026-07-10: defaultModel is frozen pending Vertex-specific Tier-2 evidence; Gemini API

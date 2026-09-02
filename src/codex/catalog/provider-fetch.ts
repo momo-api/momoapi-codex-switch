@@ -70,7 +70,7 @@ import {
 } from "../../providers/model-discovery";
 import upstreamModelsSnapshot from "../data/upstream-models.json";
 import { createAdmissionGate, ResourceAdmissionError, type AdmissionMetrics } from "../../lib/admission";
-import { projectMomoPublicCatalogAliases } from "../../momo/catalog-policy";
+import { isMomoProviderId, projectMomoPublicCatalogAliases } from "../../momo/catalog-policy";
 
 
 import { CODEX_CUSTOM_MODEL_CATALOG_KIND, JAWCODE_CATALOG_AUGMENT_PROVIDERS, catalogModelSlug, shouldExposeRoutedModel } from "./parsing";
@@ -633,7 +633,6 @@ function configuredReasoningSummarySupport(prov: OcxProviderConfig | undefined, 
 }
 
 export function applyProviderConfigHints(name: string, prov: OcxProviderConfig, model: CatalogModel, providerCap?: number): CatalogModel {
-  void name;
   const configuredCap = configuredContextWindow(prov, model.id);
   const configuredMaxInput = configuredMaxInputTokens(prov, model.id);
   let inputModalities = configuredInputModalities(prov, model.id);
@@ -662,6 +661,7 @@ export function applyProviderConfigHints(name: string, prov: OcxProviderConfig, 
     ...(hintedWindow !== undefined ? { contextWindow: hintedWindow } : {}),
     ...(inputModalities ? { inputModalities } : {}),
     ...(reasoningEfforts !== undefined ? { reasoningEfforts } : {}),
+    ...(isMomoProviderId(name) && reasoningEfforts !== undefined ? { reasoningEffortsAuthoritative: true } : {}),
     ...(configuredMaxInput !== undefined
       ? {
         maxInputTokens: typeof model.maxInputTokens === "number" && model.maxInputTokens > 0

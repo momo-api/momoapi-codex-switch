@@ -327,6 +327,16 @@ function messagesToGeminiFormat(
     }
   }
 
+  // Gemini, Vertex, and Antigravity all reject model-tail (assistant-tail) histories:
+  // "Requests ending with a model turn are not supported." / "The conversation must end with a user message."
+  // Context compaction, previous_response_id expansion, and interrupted turns can produce this shape.
+  // Append a user "(continue)" nudge, mirroring the Anthropic adapter tail guard.
+  if (contents.length === 0) {
+    contents.push({ role: "user", parts: [{ text: "(continue)" }] });
+  } else if ((contents[contents.length - 1] as { role?: string }).role === "model") {
+    contents.push({ role: "user", parts: [{ text: "(continue)" }] });
+  }
+
   return { systemInstruction, contents };
 }
 

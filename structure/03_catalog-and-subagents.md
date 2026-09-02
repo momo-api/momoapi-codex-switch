@@ -66,6 +66,13 @@ deleting, or editing a provider's shape clears that per-provider cache; a disabl
 deliberately does not, because a disabled provider is already excluded from the catalog gather
 instead. Codex's own `models_cache.json` is a different cache, invalidated by catalog refresh.
 
+MOMO reasoning metadata is authenticated gateway state, not an installer-owned model table.
+The MOMO scheduler reads `/agent/catalog` first and falls back to enriched `/v1/models` for older
+deployments. A declared ladder and default are preserved exactly in the Codex catalog, including
+native-looking aliases such as `gpt-5.6-sol`; synthetic `max`/`ultra` tiers are not added. An
+explicit unsupported state, missing capability metadata, or a malformed supported ladder removes
+the effort picker until a later authenticated refresh supplies a valid contract.
+
 ### Windows request-path catalog-state discovery
 
 [Decision Log]

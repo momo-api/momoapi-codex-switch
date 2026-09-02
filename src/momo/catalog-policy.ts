@@ -51,6 +51,16 @@ export function resolveMomoBareModelProvider(
     if (!provider || provider.disabled === true || !provider.models?.includes(modelId)) continue;
     return { providerName, provider };
   }
+  // Dynamic fallback: If unlisted or newly added model is requested, route by pattern
+  if (isMomoImageModelId(modelId)) return null;
+  let targetProviderName = "momo-responses";
+  if (/^claude[-_.]/i.test(modelId)) targetProviderName = "momo-claude";
+  else if (/^gemini[-_.]/i.test(modelId)) targetProviderName = "momo-gemini";
+
+  const fallbackProvider = config.providers[targetProviderName];
+  if (fallbackProvider && fallbackProvider.disabled !== true) {
+    return { providerName: targetProviderName, provider: fallbackProvider };
+  }
   return null;
 }
 

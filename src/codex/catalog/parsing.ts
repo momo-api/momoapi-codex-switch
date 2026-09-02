@@ -105,6 +105,8 @@ export interface CatalogModel {
   owned_by?: string;
   reasoningEfforts?: string[];
   defaultReasoningEffort?: string;
+  /** Preserve the provider's exact live-advertised ladder; do not synthesize mock tiers. */
+  reasoningEffortsAuthoritative?: boolean;
   contextWindow?: number;
   maxInputTokens?: number;
   contextCap?: number;

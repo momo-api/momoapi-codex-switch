@@ -2440,6 +2440,47 @@ describe("Codex catalog routed normalization", () => {
     expect(rows.some(row => row.slug === "gpt-5.3-codex-spark")).toBe(false);
   });
 
+  test("preserves the authoritative MOMO ladder without inventing tiers", () => {
+    const built = buildCatalogEntries(nativeTemplate(), [], [{
+      provider: "momo-responses",
+      id: "gpt-5.6-sol",
+      alias: "gpt-5.6-sol",
+      reasoningEfforts: ["low", "medium", "high"],
+      defaultReasoningEffort: "medium",
+      reasoningEffortsAuthoritative: true,
+    }]);
+    const routed = built.find(row => row.slug === "gpt-5.6-sol");
+    expect(routed).toBeDefined();
+
+    const rows = mergeObservedForTest({
+      catalogModels: [],
+      routedEntries: [routed!],
+      gatheredProviderNames: new Set(["momo-responses"]),
+      includeNativeOpenAi: false,
+    });
+    const sol = rows.find(row => row.slug === "gpt-5.6-sol");
+
+    expect((sol?.supported_reasoning_levels as Array<{ effort: string }>).map(level => level.effort))
+      .toEqual(["low", "medium", "high"]);
+    expect(sol?.default_reasoning_level).toBe("medium");
+  });
+
+  test("keeps the complete upstream xhigh, max, and ultra ladder", () => {
+    const built = buildCatalogEntries(nativeTemplate(), [], [{
+      provider: "momo-responses",
+      id: "gpt-5.6-sol",
+      alias: "gpt-5.6-sol",
+      reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      defaultReasoningEffort: "medium",
+      reasoningEffortsAuthoritative: true,
+    }]);
+    const sol = built.find(row => row.slug === "gpt-5.6-sol");
+
+    expect((sol?.supported_reasoning_levels as Array<{ effort: string }>).map(level => level.effort))
+      .toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(sol?.default_reasoning_level).toBe("medium");
+  });
+
   test("does not reuse a routed native alias as the native catalog template", () => {
     const routedAlias = {
       ...nativeTemplate(),

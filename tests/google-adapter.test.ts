@@ -422,4 +422,14 @@ describe("google adapter — direct -tiered wire renames", () => {
       expect(systemText).not.toContain("-tiered");
     }
   });
+
+  test("Gemini adapter appends a continue nudge when history ends with a model turn", async () => {
+    const contents = await geminiContents(parsedWith([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: [{ type: "text", text: "hi there" }] },
+    ]));
+    expect(contents.length).toBe(3);
+    expect(contents[2].role).toBe("user");
+    expect(contents[2].parts[0].text).toBe("(continue)");
+  });
 });

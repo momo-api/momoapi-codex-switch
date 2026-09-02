@@ -26,6 +26,7 @@ description: 提供者条目、身份验证、端点、模型目录、配额、�
 | `upstreamFailoverThreshold?` | `number` | `3` | 连续发生多少次瞬态故障后，后续新会话会切换到备用上游。设为 `0` 可禁用。对于常规 Responses 和原生 compact 发送，已证明的连接前 DNS/TCP 不可达故障按 provider-host 粒度记录，不影响账户健康、账户冷却、线程/会话亲和性、活动账户选择或 Pool 路由，也不会计入此阈值。 |
 | `upstreamHostCircuitThreshold?` | `number` | `0` | 原生 OpenAI forward Responses 与 compact 发送的可选断路器阈值，仅统计已证明的连接前 DNS/TCP 故障。`0` 表示禁用；`1`–`20` 表示在这么多个终止逻辑请求失败后，对 provider-origin 冷却 30 秒。断路期间会在账户选择和上游发送之前返回带 `Retry-After` 的 `503`；冷却结束后只允许一个半开请求。超时和 HTTP 响应不计数，任意 HTTP 响应都会关闭断路器。 仅适用于未固定账户的 Codex Pool 路由；在 `codexAccountMode: "direct"` 或使用账户限定选择器时不会启用。 |
 | `modelCacheTtlMs?` | `number` | `300000` | 每个提供者 `/models` 缓存的新鲜度窗口。 |
+| `momoModelAutoSync?` | `{ enabled?, catalogMode?, intervalMinutes?, autoCreateCombos?, autoRefreshCatalog?, includeImageModels?, exposeUnknownModels?, notifyOnChanges?, managedModelIds? }` | 仅在 `ocx momo setup` 启用后开启 | MOMO Switch 后台同步器。安装时优先请求鉴权的 `/agent/catalog`，旧部署回退到 `/v1/models`，并默认每 60 分钟刷新一次。服务端声明的思考等级与默认等级是权威数据；元数据缺失、无效或明确不支持时会隐藏 effort 控件，而不是使用安装器猜测。文本模型以公开 id 直接进入 MOMO-only 目录，不会制造单目标 Combo；图片模型仍由 MOMO 图片转发处理，但不会进入 Codex 文本模型选择器。`managedModelIds` 是运行时维护的差异状态。 |
 | `cacheRetention?` | `"none" \| "short" \| "long"` | `"short"` | Anthropic 提示缓存策略：禁用、5 分钟临时缓存，或 1 小时扩展缓存。 |
 | `tokenGuardian?` | `OcxTokenGuardianConfig` | 关闭 | 可选的主动 OAuth 刷新与 Codex 账户预热策略。 |
 

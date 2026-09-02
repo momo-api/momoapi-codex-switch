@@ -4,7 +4,7 @@ import { routedSlug } from "../providers/slug-codec";
 import { providerConfigSeed } from "../providers/derive";
 import { getProviderRegistryEntry } from "../providers/registry";
 import { isLegacyMomoModelAliasCombo, MOMO_PROVIDER_IDS } from "../momo/catalog-policy";
-import { applyMomoModelAutoSync, fetchMomoModelIds } from "../momo/model-auto-sync";
+import { applyMomoModelAutoSync, fetchMomoModels } from "../momo/model-auto-sync";
 import type { OcxComboConfig, OcxProviderConfig } from "../types";
 
 const LEGACY_LOCAL_NEWAPI_PROVIDER_ID = "local-newapi";
@@ -46,35 +46,20 @@ const MOMO_RETIRED_MODEL_ALIASES: readonly MomoModelAlias[] = [
   { id: "deepseek-v4-flash", provider: "momo-responses", displayName: "DeepSeek V4 Flash" },
 ];
 
-const MOMO_REASONING_CAPABILITIES: Readonly<Record<(typeof MOMO_PROVIDER_IDS)[number], Readonly<Record<string, readonly string[]>>>> = {
-  "momo-responses": {
-    "gpt-5.4": ["low", "medium", "high"],
-    "gpt-5.4-mini": ["low", "medium", "high"],
-    "gpt-5.5": ["low", "medium", "high"],
-    "gpt-5.6-luna": ["low", "medium", "high"],
-    "gpt-5.6-luna-lite": ["low", "medium", "high"],
-    "gpt-5.6-sol": ["low", "medium", "high"],
-    "gpt-5.6-terra": ["low", "medium", "high"],
-    "deepseek-v4-pro": ["low", "medium", "high"],
-    "deepseek-v4-flash-vision-exp": ["low", "medium", "high"],
-    "muse-spark-1.2-contributor-free": ["low", "medium", "high"],
-  },
-  "momo-claude": {
-    "claude-opus-4-6-thinking": ["low", "medium", "high"],
-  },
-  "momo-gemini": {
-    "gemini-3.7-flash": ["low", "medium", "high"],
-  },
+const LEGACY_MOMO_REASONING_MODELS: Readonly<Record<(typeof MOMO_PROVIDER_IDS)[number], readonly string[]>> = {
+  "momo-responses": [
+    "gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-luna-lite",
+    "gpt-5.6-sol", "gpt-5.6-terra", "deepseek-v4-flash", "deepseek-v4-pro",
+    "deepseek-v4-flash-vision-exp", "muse-spark-1.2-contributor-free", "ox-alpha-free",
+  ],
+  "momo-claude": ["claude-opus-4-6-thinking"],
+  "momo-gemini": ["gemini-3.7-flash"],
 };
 
-const MOMO_GEMINI_REASONING_EFFORT_MAP: Readonly<Record<string, string>> = {
-  none: "",
-  low: "LOW",
-  medium: "MEDIUM",
-  high: "HIGH",
-};
-
-/** Repair legacy false negatives without changing unknown user model settings. */
+/**
+ * Remove the guessed capability table written by older installers. Models stay
+ * fail-closed until the authenticated MOMO catalog supplies their live contract.
+ */
 export function applyMomoVerifiedReasoningCapabilities(
   providers: Record<string, OcxProviderConfig>,
 ): Record<string, OcxProviderConfig> {
@@ -82,27 +67,22 @@ export function applyMomoVerifiedReasoningCapabilities(
   for (const providerId of MOMO_PROVIDER_IDS) {
     const provider = repaired[providerId];
     if (!provider) continue;
-    const capabilities = MOMO_REASONING_CAPABILITIES[providerId];
-    const noReasoningModels = provider.noReasoningModels?.filter(model => !Object.hasOwn(capabilities, model));
+    const legacyModels = LEGACY_MOMO_REASONING_MODELS[providerId];
+    const noReasoningModels = [...new Set([...(provider.noReasoningModels ?? []), ...legacyModels])];
     const modelReasoningEfforts = { ...(provider.modelReasoningEfforts ?? {}) };
     const modelDefaultReasoningEfforts = { ...(provider.modelDefaultReasoningEfforts ?? {}) };
-    for (const [model, efforts] of Object.entries(capabilities)) {
-      modelReasoningEfforts[model] = [...efforts];
-      modelDefaultReasoningEfforts[model] = "medium";
-    }
     const modelReasoningEffortMap = { ...(provider.modelReasoningEffortMap ?? {}) };
-    if (providerId === "momo-gemini") {
-      modelReasoningEffortMap["gemini-3.7-flash"] = {
-        ...(modelReasoningEffortMap["gemini-3.7-flash"] ?? {}),
-        ...MOMO_GEMINI_REASONING_EFFORT_MAP,
-      };
+    for (const model of legacyModels) {
+      delete modelReasoningEfforts[model];
+      delete modelDefaultReasoningEfforts[model];
+      delete modelReasoningEffortMap[model];
     }
     repaired[providerId] = {
       ...provider,
-      ...(noReasoningModels ? { noReasoningModels } : {}),
+      noReasoningModels,
       modelReasoningEfforts,
       modelDefaultReasoningEfforts,
-      ...(Object.keys(modelReasoningEffortMap).length ? { modelReasoningEffortMap } : {}),
+      modelReasoningEffortMap,
     };
   }
   return repaired;
@@ -328,9 +308,9 @@ export async function runMomo(
   };
   let fetchedModelCount: number | null = null;
   try {
-    const liveModelIds = await fetchMomoModelIds(config, { fetch: dependencies.fetch });
-    applyMomoModelAutoSync(config, liveModelIds);
-    fetchedModelCount = liveModelIds.length;
+    const liveModels = await fetchMomoModels(config, { fetch: dependencies.fetch });
+    applyMomoModelAutoSync(config, liveModels);
+    fetchedModelCount = liveModels.length;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`MOMO live model fetch deferred to the background scheduler: ${message}`);

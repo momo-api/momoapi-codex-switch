@@ -430,6 +430,20 @@ describe("cap composition with downstream clamps", () => {
     expect(mapReasoningEffort(provider, "m", "medium")).toBe("medium");
   });
 
+  test("local Ultra clamps to the highest authoritative MOMO wire rung", () => {
+    const threeTier = {
+      adapter: "openai-responses", baseUrl: "https://momoapi.us/v1", apiKey: "k",
+      modelReasoningEfforts: { "gpt-5.6-sol": ["low", "medium", "high"] },
+    } as never;
+    const fullTier = {
+      ...threeTier,
+      modelReasoningEfforts: { "gpt-5.6-sol": ["low", "medium", "high", "xhigh", "max"] },
+    } as never;
+
+    expect(mapReasoningEffort(threeTier, "gpt-5.6-sol", "ultra")).toBe("high");
+    expect(mapReasoningEffort(fullTier, "gpt-5.6-sol", "ultra")).toBe("max");
+  });
+
   test("synthetic native top rung is still lowered by nativeEffortClamp after the cap block", () => {
     // gpt-5.4's real ladder stops at xhigh: an uncapped (or xhigh-capped) max/ultra
     // arrival is repaired by the native clamp that runs AFTER applyEffortCap.
