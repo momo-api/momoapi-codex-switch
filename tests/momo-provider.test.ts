@@ -287,4 +287,18 @@ describe("MOMO provider presets", () => {
     expect(responses.modelReasoningEfforts?.["ox-alpha-free"]).toBeUndefined();
     expect(claude.models).toEqual(["claude-opus-4-6-thinking"]);
   });
+  test("dynamically routes newly released or unlisted MOMO models to the matching provider lane", () => {
+    const config = {
+      momoModelAutoSync: { enabled: true, catalogMode: "momo" },
+      providers: {
+        "momo-responses": { adapter: "openai-responses", baseUrl: "https://momoapi.us/v1", apiKey: "key", models: [] },
+        "momo-claude": { adapter: "anthropic", baseUrl: "https://momoapi.us", apiKey: "key", models: [] },
+        "momo-gemini": { adapter: "google", baseUrl: "https://momoapi.us", apiKey: "key", models: [] },
+      },
+    };
+    expect(routeModel(config as any, "claude-opus-4-9-thinking").providerName).toBe("momo-claude");
+    expect(routeModel(config as any, "gemini-3.9-pro").providerName).toBe("momo-gemini");
+    expect(routeModel(config as any, "gpt-5.9").providerName).toBe("momo-responses");
+    expect(routeModel(config as any, "deepseek-v5-pro").providerName).toBe("momo-responses");
+  });
 });
