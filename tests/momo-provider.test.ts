@@ -7,7 +7,7 @@ import { getProviderRegistryEntry } from "../src/providers/registry";
 import { parseRequest } from "../src/responses/parser";
 import { resolveWireProtocolOverride } from "../src/server/adapter-resolve";
 import { buildToolBridgeMaps } from "../src/server/responses";
-import { applyMomoDesktopCompatibilityAliases, momoProviderConfigs, removeMomoCodexModelAliases, removeMomoDesktopCompatibilityAliases, showMomoTransportModelIds } from "../src/cli/momo";
+import { applyMomoDesktopCompatibilityAliases, applyMomoVerifiedReasoningCapabilities, momoProviderConfigs, removeMomoCodexModelAliases, removeMomoDesktopCompatibilityAliases, showMomoTransportModelIds } from "../src/cli/momo";
 import { routeModel } from "../src/router";
 import { filterCatalogVisibleModels } from "../src/codex/catalog";
 import { catalogModelSlug } from "../src/codex/catalog/parsing";
@@ -50,6 +50,24 @@ describe("MOMO provider presets", () => {
     expect(providers["momo-gemini"]?.adapter).toBe("google");
     expect(Object.values(providers).every(provider => provider.apiKey === "momo-test-key")).toBe(true);
     expect(providers["momo-claude"]?.headers?.["User-Agent"]).toBe("momoapi-codex-switch");
+  });
+
+  test("repairs verified reasoning capabilities without touching unknown models", () => {
+    const providers = applyMomoVerifiedReasoningCapabilities({
+      "momo-responses": {
+        adapter: "openai-responses",
+        baseUrl: "https://momoapi.us/v1",
+        noReasoningModels: ["gpt-5.6-terra", "custom-no-reasoning"],
+      },
+      "momo-claude": { adapter: "anthropic", baseUrl: "https://momoapi.us", noReasoningModels: ["claude-opus-4-6-thinking"] },
+      "momo-gemini": { adapter: "google", baseUrl: "https://momoapi.us", noReasoningModels: ["gemini-3.7-flash"] },
+    });
+
+    expect(providers["momo-responses"]?.noReasoningModels).toEqual(["custom-no-reasoning"]);
+    expect(providers["momo-responses"]?.modelReasoningEfforts?.["gpt-5.6-terra"]).toEqual(["low", "medium", "high"]);
+    expect(providers["momo-responses"]?.modelReasoningEfforts?.["muse-spark-1.2-contributor-free"]).toEqual(["low", "medium", "high"]);
+    expect(providers["momo-claude"]?.noReasoningModels).toEqual([]);
+    expect(providers["momo-gemini"]?.modelReasoningEffortMap?.["gemini-3.7-flash"]).toEqual({ none: "", low: "LOW", medium: "MEDIUM", high: "HIGH" });
   });
 
   test("routes DeepSeek through the established Chat tool-replay bridge", async () => {
