@@ -451,7 +451,7 @@ try {
 
   # Keep the key out of PowerShell command history and process arguments.
   $env:MOMO_API_KEY = $key
-  Write-Step "Configuring MOMO model routes..."
+  Write-Step "Configuring MOMO model routes and verified reasoning capabilities..."
   # MOMO setup owns the local routes and publishes short model names. It never
   # needs an OpenAI account, API key, or account-pool credential.
   & $ocx momo setup --set-default

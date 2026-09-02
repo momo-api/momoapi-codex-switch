@@ -33,8 +33,16 @@ if [[ ! "$BATCH_KILL_GRACE_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
   echo "BUN_TEST_BATCH_KILL_GRACE_SECONDS must be a positive integer, got: $BATCH_KILL_GRACE_SECONDS" >&2
   exit 64
 fi
-if ! command -v timeout >/dev/null 2>&1; then
-  echo "GNU timeout is required to bound Bun test batches." >&2
+TIMEOUT_BIN="${TIMEOUT_BIN:-}"
+if [[ -z "$TIMEOUT_BIN" ]]; then
+  if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_BIN=timeout
+  elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_BIN=gtimeout
+  fi
+fi
+if [[ -z "$TIMEOUT_BIN" ]]; then
+  echo "GNU timeout (timeout or gtimeout) is required to bound Bun test batches." >&2
   exit 69
 fi
 
@@ -104,7 +112,7 @@ run_test_once() {
   printf '  %s\n' "${files[@]}"
 
   set +e
-  timeout --signal=TERM --kill-after="${BATCH_KILL_GRACE_SECONDS}s" \
+  "$TIMEOUT_BIN" --signal=TERM --kill-after="${BATCH_KILL_GRACE_SECONDS}s" \
     "${BATCH_TIMEOUT_SECONDS}s" \
     bun test --isolate --timeout 60000 "${files[@]}" 2>&1 | tee "$log_file"
   status="${PIPESTATUS[0]}"
@@ -186,7 +194,10 @@ recover_batch_file_by_file() {
   return 0
 }
 
-mapfile -d '' -t ALL_TEST_FILES < <(
+ALL_TEST_FILES=()
+while IFS= read -r -d '' path; do
+  ALL_TEST_FILES+=("$path")
+done < <(
   find tests -type f -print0 \
     | LC_ALL=C sort -z
 )

@@ -46,6 +46,68 @@ const MOMO_RETIRED_MODEL_ALIASES: readonly MomoModelAlias[] = [
   { id: "deepseek-v4-flash", provider: "momo-responses", displayName: "DeepSeek V4 Flash" },
 ];
 
+const MOMO_REASONING_CAPABILITIES: Readonly<Record<(typeof MOMO_PROVIDER_IDS)[number], Readonly<Record<string, readonly string[]>>>> = {
+  "momo-responses": {
+    "gpt-5.4": ["low", "medium", "high"],
+    "gpt-5.4-mini": ["low", "medium", "high"],
+    "gpt-5.5": ["low", "medium", "high"],
+    "gpt-5.6-luna": ["low", "medium", "high"],
+    "gpt-5.6-luna-lite": ["low", "medium", "high"],
+    "gpt-5.6-sol": ["low", "medium", "high"],
+    "gpt-5.6-terra": ["low", "medium", "high"],
+    "deepseek-v4-pro": ["low", "medium", "high"],
+    "deepseek-v4-flash-vision-exp": ["low", "medium", "high"],
+    "muse-spark-1.2-contributor-free": ["low", "medium", "high"],
+  },
+  "momo-claude": {
+    "claude-opus-4-6-thinking": ["low", "medium", "high"],
+  },
+  "momo-gemini": {
+    "gemini-3.7-flash": ["low", "medium", "high"],
+  },
+};
+
+const MOMO_GEMINI_REASONING_EFFORT_MAP: Readonly<Record<string, string>> = {
+  none: "",
+  low: "LOW",
+  medium: "MEDIUM",
+  high: "HIGH",
+};
+
+/** Repair legacy false negatives without changing unknown user model settings. */
+export function applyMomoVerifiedReasoningCapabilities(
+  providers: Record<string, OcxProviderConfig>,
+): Record<string, OcxProviderConfig> {
+  const repaired = { ...providers };
+  for (const providerId of MOMO_PROVIDER_IDS) {
+    const provider = repaired[providerId];
+    if (!provider) continue;
+    const capabilities = MOMO_REASONING_CAPABILITIES[providerId];
+    const noReasoningModels = provider.noReasoningModels?.filter(model => !Object.hasOwn(capabilities, model));
+    const modelReasoningEfforts = { ...(provider.modelReasoningEfforts ?? {}) };
+    const modelDefaultReasoningEfforts = { ...(provider.modelDefaultReasoningEfforts ?? {}) };
+    for (const [model, efforts] of Object.entries(capabilities)) {
+      modelReasoningEfforts[model] = [...efforts];
+      modelDefaultReasoningEfforts[model] = "medium";
+    }
+    const modelReasoningEffortMap = { ...(provider.modelReasoningEffortMap ?? {}) };
+    if (providerId === "momo-gemini") {
+      modelReasoningEffortMap["gemini-3.7-flash"] = {
+        ...(modelReasoningEffortMap["gemini-3.7-flash"] ?? {}),
+        ...MOMO_GEMINI_REASONING_EFFORT_MAP,
+      };
+    }
+    repaired[providerId] = {
+      ...provider,
+      ...(noReasoningModels ? { noReasoningModels } : {}),
+      modelReasoningEfforts,
+      modelDefaultReasoningEfforts,
+      ...(Object.keys(modelReasoningEffortMap).length ? { modelReasoningEffortMap } : {}),
+    };
+  }
+  return repaired;
+}
+
 /**
  * Codex Desktop filters its picker to a small remote allowlist of native ids.
  * These explicit aliases occupy three allowlisted rows while retaining an honest
@@ -181,7 +243,7 @@ export function momoProviderConfigs(apiKey: string, existing: Record<string, Ocx
       apiKey,
     };
   }
-  return providers;
+  return applyMomoVerifiedReasoningCapabilities(providers);
 }
 
 function normalizedBaseUrl(value: string | undefined): string {
